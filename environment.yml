@@ -1,6 +1,9 @@
 name: ohg
 channels:
   - defaults
+  - conda-forge
+  - pytorch
+  - rusty1s 
 dependencies:
   - rdkit
   - torchvision
