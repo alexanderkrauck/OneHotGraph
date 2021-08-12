@@ -1,0 +1,10 @@
+name: ohg
+channels:
+  - defaults
+dependencies:
+  - rdkit
+  - torchvision
+  - torchaudio
+  - pytorch
+  - cudatoolkit=10.2
+  - pytorch-geometric
