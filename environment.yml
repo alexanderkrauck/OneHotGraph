@@ -13,3 +13,4 @@ dependencies:
   - pytorch-geometric
   - ipython
   - ipykernel
+  - tensorboard
