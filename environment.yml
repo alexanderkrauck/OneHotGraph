@@ -11,3 +11,5 @@ dependencies:
   - pytorch
   - cudatoolkit=10.2
   - pytorch-geometric
+  - ipython
+  - ipykernel
