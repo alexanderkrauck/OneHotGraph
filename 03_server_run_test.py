@@ -7,6 +7,7 @@ from argparse import ArgumentParser
 import utils.data as data
 import utils.training as training
 import utils.baselines as baselines
+import utils.sinkhorn_graph as sinkhorn_graph
 
 search_grid = {
     "hidden_channels": [64, 256, 1028],
@@ -21,15 +22,21 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("-l", "--logdir", help="Directories where logs are stored", default="runs")
     parser.add_argument("-c", "--configs", help="Number of configs to try", default=5)
+    parser.add_argument("-a", "--architecture", help="The architecture of choice", default="GIN")
 
     args = parser.parse_args()
 
     logdir = str(args.logdir)
     configs = int(args.configs)
+    architecture = str(args.architecture).lower()
 
 
 
-    model_class = baselines.GIN_Baseline
+    if architecture == "gin":
+        model_class = baselines.GIN_Baseline
+    if architecture == "sinkhorn":
+        model_class = baselines.Sinkhorn_Baseline
+
     data_module = data.DataModule("tox21_original", split_mode = "predefined")
     
     training.search_configs(

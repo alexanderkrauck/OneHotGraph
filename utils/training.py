@@ -100,7 +100,7 @@ def train_config(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    logger = SummaryWriter(log_dir = logdir, comment = config_comment)
+    logger = SummaryWriter(log_dir = logdir + "/" + config_comment, comment = config_comment)
 
     test(model, data_module.train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train")
     test(model, data_module.test_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation")
