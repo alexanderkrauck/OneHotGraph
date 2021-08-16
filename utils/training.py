@@ -12,11 +12,11 @@ from time import time
 import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score
-
+import torch.nn.functional as F
 
 from torch.utils.tensorboard import SummaryWriter
 
-def train(model, optimizer, loader, epoch, logger: SummaryWriter, device = "cpu"):
+def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = "cpu"):
 
     model.train()
 
@@ -41,14 +41,14 @@ def train(model, optimizer, loader, epoch, logger: SummaryWriter, device = "cpu"
 
         
 
-def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_label_names = None, run_type = "test", device = "cpu"):
+def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_class_names = None, run_type = "test", device = "cpu"):
     model.eval()
 
     indices_list = [[] for d in range(n_classes)]
     probs_list = [[] for d in range(n_classes)]
 
-    if dataset_label_names is None:
-        dataset_label_names = range(n_classes)
+    if dataset_class_names is None:
+        dataset_class_names = range(n_classes)
 
     for data in loader:  # Iterate in batches over the training/test dataset.
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
@@ -70,7 +70,7 @@ def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_lab
     for i, indices, probs in zip(range(n_classes), indices_list, probs_list):
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
-        logger.add_scalar(f"AUC-ROC/{run_type}/{dataset_label_names[i]}", roc_auc_score(indices, probs), global_step=epoch)
+        logger.add_scalar(f"AUC-ROC/{run_type}/{dataset_class_names[i]}", roc_auc_score(indices, probs), global_step=epoch)
 
     return 0.5, 0.5 # Derive ratio of correct predictions.
 
@@ -85,10 +85,12 @@ def train_config(
     lr = 1e-2, 
     epochs = 100, 
     config_comment = "",
-    device = "cpu"
+    device = "cpu",
+    logdir = "runs"
     ):
 
     model = model_class(
+        data_module = data_module,
         n_hidden_channels = hidden_channels,
         n_graph_layers = base_depth, 
         n_graph_dropout = base_dropout, 
@@ -98,16 +100,16 @@ def train_config(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    logger = SummaryWriter(comment = config_comment)
+    logger = SummaryWriter(log_dir = logdir, comment = config_comment)
 
-    test(model, data_module.train_loader, 0, logger, run_type="train")
-    test(model, data_module.test_loader, 0, logger, run_type="validation")
+    test(model, data_module.train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train")
+    test(model, data_module.test_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation")
 
     for epoch in range(1, epochs + 1):
     
         train(model, optimizer, data_module.train_loader, epoch, logger)
-        test(model, data_module.train_loader, epoch, logger, run_type="train")
-        test(model, data_module.test_loader, epoch, logger, run_type="validation")
+        test(model, data_module.train_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="train")
+        test(model, data_module.test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation")
 
         logger.flush()
 
@@ -115,7 +117,7 @@ def dict_product(dicts):
 
     return (dict(zip(dicts, x)) for x in itertools.product(*dicts.values()))
 
-def search_configs(search_grid, randomly_try_n = -1):
+def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, logdir = "runs"):
 
     configurations = [config for config in dict_product(search_grid)]
     print(f"Total number of Grid-Search configurations: {len(configurations)}")
@@ -138,13 +140,16 @@ def search_configs(search_grid, randomly_try_n = -1):
         dt = time()
     
         train_config(
+            model_class = model_class,
+            data_module = data_module,
             hidden_channels = config["hidden_channels"], 
             head_depth = config["head_depth"], 
             base_depth =  config["base_depth"], 
             base_dropout =  config["base_dropout"], 
             head_dropout =  config["head_dropout"], 
             lr =  config["lr"], 
-            config_comment = config_str
+            config_comment = config_str,
+            logdir = logdir
             )
             
         print(f"done (took {time() - dt:.2f}s)")

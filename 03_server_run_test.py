@@ -1,5 +1,12 @@
-import utils
+#!/usr/bin/python
+
+import sys, getopt
+from argparse import ArgumentParser
+
+
+import utils.data as data
 import utils.training as training
+import utils.baselines as baselines
 
 search_grid = {
     "hidden_channels": [64, 256, 1028],
@@ -11,7 +18,29 @@ search_grid = {
 }
 
 def main():
-    training.search_configs(search_grid, 10)
+    parser = ArgumentParser()
+    parser.add_argument("-l", "--logdir", help="Directories where logs are stored", default="runs")
+    parser.add_argument("-c", "--configs", help="Number of configs to try", default=5)
+
+    args = parser.parse_args()
+
+    logdir = str(args.logdir)
+    configs = int(args.configs)
+
+
+
+    model_class = baselines.GIN_Baseline
+    data_module = data.DataModule("tox21_original", split_mode = "predefined")
+    
+    training.search_configs(
+        model_class, 
+        data_module, 
+        search_grid, 
+        randomly_try_n = configs, 
+        logdir = logdir
+        )
+
+
 
 if __name__ == '__main__':
     main()
