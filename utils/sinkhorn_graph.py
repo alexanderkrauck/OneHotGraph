@@ -35,167 +35,68 @@ from torch_geometric.nn.inits import glorot, zeros
 
 #https://github.com/btaba/sinkhorn_knopp
 
-import warnings
 
 import numpy as np
 
 
-class SinkhornKnopp:
-    """
-    Sinkhorn Knopp Algorithm
 
-    Takes a non-negative square matrix P, where P =/= 0
-    and iterates through Sinkhorn Knopp's algorithm
-    to convert P to a doubly stochastic matrix.
-    Guaranteed convergence if P has total support.
-
-    For reference see original paper:
-        http://msp.org/pjm/1967/21-2/pjm-v21-n2-p14-s.pdf
+def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100):
+    """Fit the diagonal matrices in Sinkhorn Knopp's algorithm
 
     Parameters
     ----------
-    max_iter : int, default=1000
-        The maximum number of iterations.
+    P : 2d Tensor
 
-    epsilon : float, default=1e-3
-        Metric used to compute the stopping condition,
-        which occurs if all the row and column sums are
-        within epsilon of 1. This should be a very small value.
-        Epsilon must be between 0 and 1.
-
-    Attributes
-    ----------
-    _max_iter : int, default=1000
-        User defined parameter. See above.
-
-    _epsilon : float, default=1e-3
-        User defined paramter. See above.
-
-    _stopping_condition: string
-        Either "max_iter", "epsilon", or None, which is a
-        description of why the algorithm stopped iterating.
-
-    _iterations : int
-        The number of iterations elapsed during the algorithm's
-        run-time.
-
-    _D1 : 2d-array
-        Diagonal matrix obtained after a stopping condition was met
-        so that _D1.dot(P).dot(_D2) is close to doubly stochastic.
-
-    _D2 : 2d-array
-        Diagonal matrix obtained after a stopping condition was met
-        so that _D1.dot(P).dot(_D2) is close to doubly stochastic.
-
-    Example
+    Returns
     -------
-
-    .. code-block:: python
-        >>> import numpy as np
-        >>> from sinkhorn_knopp import sinkhorn_knopp as skp
-        >>> sk = skp.SinkhornKnopp()
-        >>> P = [[.011, .15], [1.71, .1]]
-        >>> P_ds = sk.fit(P)
-        >>> P_ds
-        array([[ 0.06102561,  0.93897439],
-           [ 0.93809928,  0.06190072]])
-        >>> np.sum(P_ds, axis=0)
-        array([ 0.99912489,  1.00087511])
-        >>> np.sum(P_ds, axis=1)
-        array([ 1.,  1.])
+    A double stochastic matrix.
 
     """
 
-    def __init__(self, max_iter=1000, epsilon=1e-3):
-        assert isinstance(max_iter, int) or isinstance(max_iter, float),\
-            "max_iter is not of type int or float: %r" % max_iter
-        assert max_iter > 0,\
-            "max_iter must be greater than 0: %r" % max_iter
-        self._max_iter = int(max_iter)
+    N = P.shape[0]
+    max_thresh = 1 + threshhold
+    min_thresh = 1 - threshhold
 
-        assert isinstance(epsilon, int) or isinstance(epsilon, float),\
-            "epsilon is not of type float or int: %r" % epsilon
-        assert epsilon > 0 and epsilon < 1,\
-            "epsilon must be between 0 and 1 exclusive: %r" % epsilon
-        self._epsilon = epsilon
+    # Initialize r and c, the diagonals of D1 and D2
+    r = torch.ones(N)
+    pdotr = P.T @ r
 
-        self._stopping_condition = None
-        self._iterations = 0
-        self._D1 = np.ones(1)
-        self._D2 = np.ones(1)
+    c = 1 / pdotr
+    pdotc = P @ c
 
-    def fit(self, P):
-        """Fit the diagonal matrices in Sinkhorn Knopp's algorithm
 
-        Parameters
-        ----------
-        P : 2d array-like
-        Must be a square non-negative 2d array-like object, that
-        is convertible to a numpy array. The matrix must not be
-        equal to 0 and it must have total support for the algorithm
-        to converge.
+    r = 1 / pdotc
+    del pdotr, pdotc
+    P_eps = copy.copy(P)
 
-        Returns
-        -------
-        A double stochastic matrix.
+    iterations = 0
+    stopping_condition = None
+    while torch.any(torch.sum(P_eps, dim=1) < min_thresh) \
+            or torch.any(torch.sum(P_eps, dim=1) > max_thresh) \
+            or torch.any(torch.sum(P_eps, dim=0) < min_thresh) \
+            or torch.any(torch.sum(P_eps, dim=0) > max_thresh):
 
-        """
-        P = np.asarray(P)
-        assert np.all(P >= 0)
-        assert P.ndim == 2
-        assert P.shape[0] == P.shape[1]
+        c = 1 / (P.T @ r)
+        r = 1 / (P @ c)
 
-        N = P.shape[0]
-        max_thresh = 1 + self._epsilon
-        min_thresh = 1 - self._epsilon
+        P_eps = ((P * c).T * r).T
 
-        # Initialize r and c, the diagonals of D1 and D2
-        # and warn if the matrix does not have support.
-        r = np.ones((N, 1))
-        pdotr = P.T.dot(r)
-        total_support_warning_str = (
-            "Matrix P must have total support. "
-            "See documentation"
-        )
-        if not np.all(pdotr != 0):
-            warnings.warn(total_support_warning_str, UserWarning)
+        iterations += 1
 
-        c = 1 / pdotr
-        pdotc = P.dot(c)
-        if not np.all(pdotc != 0):
-            warnings.warn(total_support_warning_str, UserWarning)
+        if iterations >= max_iter:
+            stopping_condition = "max_iter"
+            break
 
-        r = 1 / pdotc
-        del pdotr, pdotc
+    if not stopping_condition:
+        stopping_condition = "epsilon"
 
-        P_eps = np.copy(P)
-        while np.any(np.sum(P_eps, axis=1) < min_thresh) \
-                or np.any(np.sum(P_eps, axis=1) > max_thresh) \
-                or np.any(np.sum(P_eps, axis=0) < min_thresh) \
-                or np.any(np.sum(P_eps, axis=0) > max_thresh):
 
-            c = 1 / P.T.dot(r)
-            r = 1 / P.dot(c)
+    P_eps = ((P * c.detach()).T * r.detach()).T
 
-            self._D1 = np.diag(np.squeeze(r))
-            self._D2 = np.diag(np.squeeze(c))
-            P_eps = self._D1.dot(P).dot(self._D2)
 
-            self._iterations += 1
+    return P_eps, r, c, stopping_condition
 
-            if self._iterations >= self._max_iter:
-                self._stopping_condition = "max_iter"
-                break
-
-        if not self._stopping_condition:
-            self._stopping_condition = "epsilon"
-
-        self._D1 = np.diag(np.squeeze(r))
-        self._D2 = np.diag(np.squeeze(c))
-        P_eps = self._D1.dot(P).dot(self._D2)
-
-        return P_eps
-
+import pdb
 class SinkhornGATConv(MessagePassing):
     r"""The graph attentional operator from the `"Graph Attention Networks"
     <https://arxiv.org/abs/1710.10903>`_ paper
@@ -283,12 +184,9 @@ class SinkhornGATConv(MessagePassing):
         glorot(self.att_r)
         zeros(self.bias)
 
-    def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj,
+    def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj, batch_sample_indices,
                 size: Size = None, return_attention_weights=None):
-        # type: (Union[Tensor, OptPairTensor], Tensor, Size, NoneType) -> Tensor  # noqa
-        # type: (Union[Tensor, OptPairTensor], SparseTensor, Size, NoneType) -> Tensor  # noqa
-        # type: (Union[Tensor, OptPairTensor], Tensor, Size, bool) -> Tuple[Tensor, Tuple[Tensor, Tensor]]  # noqa
-        # type: (Union[Tensor, OptPairTensor], SparseTensor, Size, bool) -> Tuple[Tensor, SparseTensor]  # noqa
+
         r"""
         Args:
             return_attention_weights (bool, optional): If set to :obj:`True`,
@@ -334,14 +232,8 @@ class SinkhornGATConv(MessagePassing):
                 edge_index = set_diag(edge_index)
 
         # propagate_type: (x: OptPairTensor, alpha: OptPairTensor)
-        #print("x_l:\n",x_l)
-        #print("x_r:\n",x_r)
-        #print("alpha_l:\n",alpha_l)
-        #print("alpha_r:\n", alpha_r)
-        #print("size:\n",size)
-        #print("edge_index:\n", edge_index)
-        out = self.propagate(edge_index, x=(x_l, x_r),
-                             alpha=(alpha_l, alpha_r), size=size)
+
+        out = self.propagate(edge_index, x=(x_l, x_r), alpha=(alpha_l, alpha_r), size=size, batch_sample_indices=batch_sample_indices)
 
         alpha = self._alpha
         self._alpha = None
@@ -365,7 +257,7 @@ class SinkhornGATConv(MessagePassing):
 
     def message(self, x_j: Tensor, alpha_j: Tensor, alpha_i: OptTensor,
                 edge_index_i: Tensor, edge_index_j: Tensor, ptr: OptTensor,
-                size_i: Optional[int]) -> Tensor:
+                size_i: Optional[int], batch_sample_indices) -> Tensor:
         """Attention construction
 
         For the Sinkhorn-Knoff implementation the reparametization trick is used to keep differentiablity
@@ -375,36 +267,27 @@ class SinkhornGATConv(MessagePassing):
         edge_index_j: Tensor
             The sourcing edges of the messages
         """
-        #index: contains the index where each x_j and alpha goes to (where the message is sent to)
-        #We now need also where the message comes from to make the matrix double stochastic! (need to add it)
-        #This is contained in the edge_index matrix
         
         alpha = alpha_j if alpha_i is None else alpha_j + alpha_i
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, edge_index_i, ptr, size_i)
-        self._alpha = alpha
-        alpha = F.dropout(alpha, p=self.dropout, training=self.training) 
-        #print("alpha:\n", alpha)
+        #alpha_old = alpha
 
-        #print("alpha_shape:\n",alpha.shape)
-        #print("x_j:\n",x_j)
-        #print("x_j shape", x_j.shape)
-        #print("edge_index_i:\n", edge_index_i)
-        #print("ptr\n",ptr)
-        #print("size_i\n",size_i)
-        #print("edge_index_j:\n",edge_index_j)
+        #Sinkhorn (This is rather slow)
         z = torch.zeros((size_i, size_i))
         z[edge_index_j, edge_index_i] = alpha.squeeze()#maybe switch j and i here?
-        sk = SinkhornKnopp()
-        _ = sk.fit(z.detach().cpu().numpy())
-        D1 = torch.tensor(sk._D1, dtype=torch.float32)
-        D2 = torch.tensor(sk._D2, dtype=torch.float32)
-        new_z = D1 @ z @ D2
+        z = z + torch.eye(z.shape[0]) * 1e-8 #Numerical stabilty (might not even be required)
+        #sparse_z = torch.sparse_coo_tensor(indices = torch.tensor([edge_index_j, edge_index_i]), values = alpha.squeeze())._to_sparse_csr()
+        new_z, r, c, stopping_condition = sinkhorn(z)#I think gradients should still flow
+
+
         alpha = new_z[edge_index_j, edge_index_i]
         alpha = alpha.unsqueeze(-1)
-        #print("alpha_new:\n",alpha)
-        #TODO: reparametize here
-        #print("z new:\n",new_z)
+
+
+        #Dropout after Sinkhorn!
+        self._alpha = alpha
+        alpha = F.dropout(alpha, p=self.dropout, training=self.training) 
 
         return x_j * alpha.unsqueeze(-1)
 
@@ -466,3 +349,17 @@ class SinkhornGAT(BasicGNN):
             SinkhornGATConv(in_channels, out_channels, dropout=dropout, **kwargs))
         for _ in range(1, num_layers):
             self.convs.append(SinkhornGATConv(hidden_channels, out_channels, **kwargs))
+    
+    #FROM ME:
+    def forward(self, x: Tensor, edge_index: Adj, batch_sample_indices: Tensor, *args, **kwargs) -> Tensor:
+        xs: List[Tensor] = []
+        for i in range(self.num_layers):
+            x = self.convs[i](x, edge_index, batch_sample_indices, *args, **kwargs)
+            if self.norms is not None:
+                x = self.norms[i](x)
+            if self.act is not None:
+                x = self.act(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            if self.jk is not None:
+                xs.append(x)
+        return x if self.jk is None else self.jk(xs)

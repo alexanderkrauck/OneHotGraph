@@ -32,7 +32,7 @@ class Sinkhorn_Baseline(nn.Module):
 
     def forward(self, x, edge_index, batch_sample_indices):
         # 1. Obtain node embeddings 
-        x = self.sinkhorn_gat(x, edge_index)
+        x = self.sinkhorn_gat(x, edge_index, batch_sample_indices)
 
         # 2. Readout layer
         x = gnn.global_mean_pool(x, batch_sample_indices)  # [batch_size, hidden_channels]

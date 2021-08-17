@@ -13,16 +13,23 @@ import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score
 import torch.nn.functional as F
+import tqdm
+
 
 from torch.utils.tensorboard import SummaryWriter
 
-def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = "cpu"):
+def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = "cpu", use_tqdm = False):
 
     model.train()
 
     n_minibatches = len(loader)
 
-    for batch_nr, data in enumerate(loader):
+    if use_tqdm:
+        iterate = tqdm.tqdm(enumerate(loader))
+    else:
+        iterate = enumerate(loader)
+
+    for batch_nr, data in iterate:
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
 
         out = model(x, edge_index, batch)
@@ -31,7 +38,10 @@ def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = 
         is_not_nan = ~y.isnan()
         y = torch.nan_to_num(y, 0.5)
 
-        loss = (F.binary_cross_entropy(out, y, reduction="none") * is_not_nan).mean() #Same as is the DeepTox paper
+        try:
+            loss = (F.binary_cross_entropy(out, y, reduction="none") * is_not_nan).mean() #Same as is the DeepTox paper
+        except RuntimeError:
+            print(y, out)
 
         optimizer.zero_grad() 
         loss.backward()
@@ -41,7 +51,7 @@ def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = 
 
         
 
-def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_class_names = None, run_type = "test", device = "cpu"):
+def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_class_names = None, run_type = "test", device = "cpu", use_tqdm = False):
     model.eval()
 
     indices_list = [[] for d in range(n_classes)]
@@ -50,8 +60,14 @@ def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_cla
     if dataset_class_names is None:
         dataset_class_names = range(n_classes)
 
-    for data in loader:  # Iterate in batches over the training/test dataset.
+    if use_tqdm:
+        iterate = tqdm.tqdm(loader)
+    else:
+        iterate = loader
+
+    for data in iterate:  # Iterate in batches over the training/test dataset.
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
+        #batch containts for each x to which sample in the minibatch it belongs.
 
         out = model(x, edge_index, batch)
 
