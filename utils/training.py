@@ -18,6 +18,7 @@ import tqdm
 
 from torch.utils.tensorboard import SummaryWriter
 
+
 def train(model, optimizer, loader, n_classes, epoch: int, logger: SummaryWriter, dataset_class_names = None, device = "cpu", use_tqdm = False):
 
     model.train()
@@ -119,6 +120,7 @@ def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_cla
 def train_config(
     model_class,
     data_module,
+    logger: SummaryWriter,
     hidden_channels = 128,
     head_depth = 3, 
     base_depth = 5, 
@@ -128,9 +130,7 @@ def train_config(
     weight_decay = 1e-8,
     batch_size = 64,
     epochs = 100, 
-    config_comment = "",
-    device = "cpu",
-    logdir = "runs"
+    device = "cpu"
     ):
 
     model = model_class(
@@ -144,7 +144,6 @@ def train_config(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    logger = SummaryWriter(log_dir = logdir + "/" + config_comment, comment = config_comment)
 
     train_loader = data_module.make_train_loader(batch_size = batch_size)
     val_loader = data_module.make_val_loader()
@@ -176,18 +175,24 @@ def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, l
     print(f"Number of configurations now being trained {len(do_indices)}")
     print("--------------------------------------------------------------------------------------------\n")
     
-    for idx in do_indices:
+    for trial_nr, idx in enumerate(do_indices):
         
         config = configurations[idx]
+
 
         config_str = str(config).replace("'","").replace(":", "-").replace(" ", "").replace("}", "").replace("_","").replace(",", "_").replace("{","_")
 
         print(f"Training config {config_str} ... ", end="")
         dt = time()
     
+
+        logger = SummaryWriter(log_dir = logdir + "/" + config_str, comment = config_str)
+        #logger.add_hparams(config,  ,run_name= f"run{trial_nr}")
+
         train_config(
             model_class = model_class,
             data_module = data_module,
+            logger = logger,
             hidden_channels = config["hidden_channels"], 
             head_depth = config["head_depth"], 
             base_depth =  config["base_depth"], 
@@ -196,8 +201,6 @@ def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, l
             weight_decay= config["weight_decay"],
             lr =  config["lr"], 
             batch_size = config["batch_size"],
-            config_comment = config_str,
-            logdir = logdir,
             device = device
             )
             
