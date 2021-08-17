@@ -18,11 +18,17 @@ import tqdm
 
 from torch.utils.tensorboard import SummaryWriter
 
-def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = "cpu", use_tqdm = False):
+def train(model, optimizer, loader, n_classes, epoch: int, logger: SummaryWriter, dataset_class_names = None, device = "cpu", use_tqdm = False):
 
     model.train()
 
+    if dataset_class_names is None:
+        dataset_class_names = range(n_classes)
+
     n_minibatches = len(loader)
+
+    indices_list = [[] for d in range(n_classes)]
+    probs_list = [[] for d in range(n_classes)]
 
     if use_tqdm:
         iterate = tqdm.tqdm(loader)
@@ -50,7 +56,24 @@ def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = 
 
         logger.add_scalar(f"BCR_MultiTask", loss.detach().cpu().numpy(), global_step=n_minibatches * (epoch - 1) + batch_nr + 1)
 
+        for i in range(n_classes):
+            y = data.y[:,i]
+            is_not_nan = ~y.isnan()
+
+            indices = y[is_not_nan].long().detach().cpu().numpy()
+            rs = out[is_not_nan].detach().cpu().numpy()
+            probs = rs[:, i]
+        
+            #print(indices.shape, probs1.shape, rs.shape, np.ones_like(indices).shape)
+            indices_list[i].append(indices)
+            probs_list[i].append(probs)
+
         batch_nr += 1
+    
+    for i, indices, probs in zip(range(n_classes), indices_list, probs_list):
+        indices = np.concatenate(indices)
+        probs = np.concatenate(probs)
+        logger.add_scalar(f"AUC-ROC/train/{dataset_class_names[i]}", roc_auc_score(indices, probs), global_step=epoch)
 
         
 
@@ -101,7 +124,9 @@ def train_config(
     base_depth = 5, 
     base_dropout = 0.5, 
     head_dropout = 0.5, 
-    lr = 1e-2, 
+    lr = 1e-2,
+    weight_decay = 1e-8,
+    batch_size = 64,
     epochs = 100, 
     config_comment = "",
     device = "cpu",
@@ -117,18 +142,20 @@ def train_config(
         n_linear_dropout = head_dropout
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     logger = SummaryWriter(log_dir = logdir + "/" + config_comment, comment = config_comment)
 
-    test(model, data_module.train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train", device = device)
-    test(model, data_module.test_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
+    train_loader = data_module.make_train_loader(batch_size = batch_size)
+    val_loader = data_module.make_val_loader()
+
+    test(model, train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train", device = device)
+    test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
 
     for epoch in range(1, epochs + 1):
     
-        train(model, optimizer, data_module.train_loader, epoch, logger, device = device)
-        test(model, data_module.train_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="train", device = device)
-        test(model, data_module.test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device)
+        train(model, optimizer, train_loader, data_module.num_classes, epoch, logger, data_module.class_names, device = device)
+        test(model, val_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device)
 
         logger.flush()
 
@@ -166,7 +193,9 @@ def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, l
             base_depth =  config["base_depth"], 
             base_dropout =  config["base_dropout"], 
             head_dropout =  config["head_dropout"], 
+            weight_decay= config["weight_decay"],
             lr =  config["lr"], 
+            batch_size = config["batch_size"],
             config_comment = config_str,
             logdir = logdir,
             device = device

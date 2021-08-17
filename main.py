@@ -16,7 +16,9 @@ search_grid = {
     "base_depth": [3,5,10],
     "base_dropout": [0.5, 0.2],
     "head_dropout": [0.5, 0.2],
-    "lr": [1e-2, 1e-3]
+    "lr": [1e-2, 1e-3],
+    "weight_decay": [1e-8, 1e-3],
+    "batch_size": [256, 64, 16]
 }
 
 
@@ -33,35 +35,44 @@ def main(
         if device.isdigit():
             device_n = int(device)
             if device_n < torch.cuda.device_count():
-                device = torch.cuda.device(device_n)
+                device = "cuda:" + device
             else:
                 device = "cpu"
             
     name = name.replace("*time*", datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
 
-
-    if architecture == "gin":
-        model_class = baselines.GIN_Baseline
-    if architecture == "sinkhorn":
-        model_class = baselines.Sinkhorn_Baseline
-    if architecture == "gat":
-        model_class = baselines.GAT_Baseline
-
     data_module = data.DataModule("tox21_original", split_mode = "predefined")
-    
-    training.search_configs(
-        model_class, 
-        data_module, 
-        search_grid, 
-        randomly_try_n = configs, 
-        logdir = logdir + "/" + name,
-        device = device
-        )
+
+    n_architectures = len(architecture.split(","))
+
+    for a in architecture.split(","):
+        if a == "gin":
+            model_class = baselines.GIN_Baseline
+        elif a == "sinkhorn":
+            model_class = baselines.Sinkhorn_Baseline
+        elif a == "gat":
+            model_class = baselines.GAT_Baseline
+        else:
+            print(f"Model Class {a} is unknown... skipping")
+            continue
+
+        if n_architectures > 1:
+            ldir = logdir + "/" + name + "/" + a
+        else:
+            ldir = logdir + "/" + name
+        
+        training.search_configs(
+            model_class, 
+            data_module, 
+            search_grid, 
+            randomly_try_n = configs, 
+            logdir = ldir,
+            device = device
+            )
 
 
 
 if __name__ == '__main__':
-
 
 
     parser = ArgumentParser()

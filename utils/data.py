@@ -352,7 +352,7 @@ def fixed_split(dataset, test_ratio):
 class DataModule():
     """"""
 
-    def __init__(self, data_name: str, root_dir: str = "data", split_mode: str = "fixed", test_ratio: float = 0.2, batch_size: int = 64):
+    def __init__(self, data_name: str, root_dir: str = "data", split_mode: str = "fixed", test_ratio: float = 0.2):
         """
         
         Parameters
@@ -382,11 +382,8 @@ class DataModule():
 
 
             if split_mode == "fixed":
-                train_dataset, val_dataset, test_dataset = fixed_split(dataset, test_ratio)
+                self.train_dataset, self.val_dataset, self.test_dataset = fixed_split(dataset, test_ratio)
     
-            self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-            self.test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-            self.val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
         if data_name == "tox21_original":
 
@@ -400,7 +397,7 @@ class DataModule():
             self.class_names = info_file.columns[-12:]
 
             if split_mode == "fixed":
-                train_dataset, val_dataset, test_dataset = fixed_split(dataset, test_ratio)
+                self.train_dataset, self.val_dataset, self.test_dataset = fixed_split(dataset, test_ratio)
 
             elif split_mode == "predefined":
                 set_type = info_file.reset_index()
@@ -409,13 +406,20 @@ class DataModule():
                 validation_rows = set_type.index[set_type["set"] == "validation"].to_numpy()
                 test_rows = set_type.index[set_type["set"] == "test"].to_numpy()
 
-                train_dataset = dataset[training_rows - 1]
-                val_dataset = dataset[validation_rows - 1]
-                test_dataset = dataset[test_rows - 1]
+                self.train_dataset = dataset[training_rows - 1]
+                self.val_dataset = dataset[validation_rows - 1]
+                self.test_dataset = dataset[test_rows - 1]
 
-            self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-            self.test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-            self.val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+
+    def make_train_loader(self, batch_size = 64):
+        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True)
+    
+    def make_test_loader(self):
+        return DataLoader(self.test_dataset, batch_size=64, shuffle=False)
+
+    def make_val_loader(self):
+        return DataLoader(self.val_dataset, batch_size=64, shuffle=False)
+
 
 
 
