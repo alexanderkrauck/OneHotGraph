@@ -25,11 +25,12 @@ def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = 
     n_minibatches = len(loader)
 
     if use_tqdm:
-        iterate = tqdm.tqdm(enumerate(loader))
+        iterate = tqdm.tqdm(loader)
     else:
-        iterate = enumerate(loader)
+        iterate = loader
 
-    for batch_nr, data in iterate:
+    batch_nr = 0
+    for data in iterate:
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
 
         out = model(x, edge_index, batch)
@@ -48,6 +49,8 @@ def train(model, optimizer, loader, epoch: int, logger: SummaryWriter, device = 
         optimizer.step()
 
         logger.add_scalar(f"BCR_MultiTask", loss.detach().cpu().numpy(), global_step=n_minibatches * (epoch - 1) + batch_nr + 1)
+
+        batch_nr += 1
 
         
 
@@ -118,14 +121,14 @@ def train_config(
 
     logger = SummaryWriter(log_dir = logdir + "/" + config_comment, comment = config_comment)
 
-    test(model, data_module.train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train")
-    test(model, data_module.test_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation")
+    test(model, data_module.train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train", device = device)
+    test(model, data_module.test_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
 
     for epoch in range(1, epochs + 1):
     
-        train(model, optimizer, data_module.train_loader, epoch, logger)
-        test(model, data_module.train_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="train")
-        test(model, data_module.test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation")
+        train(model, optimizer, data_module.train_loader, epoch, logger, device = device)
+        test(model, data_module.train_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="train", device = device)
+        test(model, data_module.test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device)
 
         logger.flush()
 
@@ -133,7 +136,7 @@ def dict_product(dicts):
 
     return (dict(zip(dicts, x)) for x in itertools.product(*dicts.values()))
 
-def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, logdir = "runs"):
+def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, logdir = "runs", device = "cpu"):
 
     configurations = [config for config in dict_product(search_grid)]
     print(f"Total number of Grid-Search configurations: {len(configurations)}")
@@ -165,7 +168,8 @@ def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, l
             head_dropout =  config["head_dropout"], 
             lr =  config["lr"], 
             config_comment = config_str,
-            logdir = logdir
+            logdir = logdir,
+            device = device
             )
             
         print(f"done (took {time() - dt:.2f}s)")

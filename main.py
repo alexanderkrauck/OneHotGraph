@@ -3,6 +3,7 @@
 from datetime import datetime
 from argparse import ArgumentParser
 
+import torch
 
 import utils.data as data
 import utils.training as training
@@ -18,10 +19,25 @@ search_grid = {
     "lr": [1e-2, 1e-3]
 }
 
+
+
 def main(
-    logdir:str = "runs", 
+    name:str = "*time*",#*time* is replaced by the datetime
+    logdir:str = "runs",
     configs:int = 5, 
-    architecture:str = "GIN"):
+    architecture:str = "GIN",
+    device:str = "cpu"):
+
+    #TODO: Add device check
+    if torch.cuda.is_available():
+        if device.isdigit():
+            device_n = int(device)
+            if device_n < torch.cuda.device_count():
+                device = torch.cuda.device(device_n)
+            else:
+                device = "cpu"
+            
+    name = name.replace("*time*", datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
 
 
     if architecture == "gin":
@@ -36,25 +52,29 @@ def main(
         data_module, 
         search_grid, 
         randomly_try_n = configs, 
-        logdir = logdir
+        logdir = logdir + "/" + name,
+        device = device
         )
 
 
 
 if __name__ == '__main__':
 
-    now = datetime.now().strftime("%d-%m-%Y_%H-%M-%S") # current date and time
 
 
     parser = ArgumentParser()
-    parser.add_argument("-l", "--logdir", help="Directories where logs are stored", default=f"{now}")
+    parser.add_argument("-n", "--name", help="Name of the experiment", default=f"*time*")
+    parser.add_argument("-l", "--logdir", help="Directories where logs are stored", default=f"runs")
     parser.add_argument("-c", "--configs", help="Number of configs to try", default=5)
     parser.add_argument("-a", "--architecture", help="The architecture of choice", default="GIN")
+    parser.add_argument("-d", "--device", help="The device of choice", default="cpu")
 
     args = parser.parse_args()
 
-    logdir = "runs/" + str(args.logdir)
+    logdir = str(args.logdir)
+    name = str(args.name)
     configs = int(args.configs)
     architecture = str(args.architecture).lower()
+    device = str(args.device)
 
-    main(logdir, configs, architecture)
+    main(name, logdir, configs, architecture, device)

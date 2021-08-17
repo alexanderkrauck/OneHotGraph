@@ -40,7 +40,7 @@ import numpy as np
 
 
 
-def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100):
+def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False):
     """Fit the diagonal matrices in Sinkhorn Knopp's algorithm
 
     Parameters
@@ -53,21 +53,24 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100):
 
     """
 
-    N = P.shape[0]
+    device = P.device
+    P_ = P.detach().clone()
+    P_eps = P.detach().clone()
+
+    N = P_.shape[0]
     max_thresh = 1 + threshhold
     min_thresh = 1 - threshhold
 
     # Initialize r and c, the diagonals of D1 and D2
-    r = torch.ones(N)
-    pdotr = P.T @ r
+    r = torch.ones(N, device = device)
+    pdotr = P_.T @ r
 
     c = 1 / pdotr
-    pdotc = P @ c
+    pdotc = P_ @ c
 
 
     r = 1 / pdotc
     del pdotr, pdotc
-    P_eps = copy.copy(P)
 
     iterations = 0
     stopping_condition = None
@@ -76,10 +79,10 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100):
             or torch.any(torch.sum(P_eps, dim=0) < min_thresh) \
             or torch.any(torch.sum(P_eps, dim=0) > max_thresh):
 
-        c = 1 / (P.T @ r)
-        r = 1 / (P @ c)
+        c = 1 / (P_.T @ r)
+        r = 1 / (P_ @ c)
 
-        P_eps = ((P * c).T * r).T
+        P_eps = ((P_ * c).T * r).T
 
         iterations += 1
 
@@ -91,10 +94,12 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100):
         stopping_condition = "epsilon"
 
 
-    P_eps = ((P * c.detach()).T * r.detach()).T
+    P = ((P * c).T * r).T
 
-
-    return P_eps, r, c, stopping_condition
+    if return_extra:
+        return P, r, c, stopping_condition
+    else:
+        return P
 
 import pdb
 class SinkhornGATConv(MessagePassing):
@@ -273,12 +278,12 @@ class SinkhornGATConv(MessagePassing):
         alpha = softmax(alpha, edge_index_i, ptr, size_i)
         #alpha_old = alpha
 
-        #Sinkhorn (This is rather slow)
-        z = torch.zeros((size_i, size_i))
+        #Sinkhorn Part(This is rather slow) -> TODO: Make it a pytorch-module
+        z = torch.zeros((size_i, size_i), device = alpha.device)
         z[edge_index_j, edge_index_i] = alpha.squeeze()#maybe switch j and i here?
-        z = z + torch.eye(z.shape[0]) * 1e-8 #Numerical stabilty (might not even be required)
-        #sparse_z = torch.sparse_coo_tensor(indices = torch.tensor([edge_index_j, edge_index_i]), values = alpha.squeeze())._to_sparse_csr()
-        new_z, r, c, stopping_condition = sinkhorn(z)#I think gradients should still flow
+        z = z + torch.eye(z.shape[0], device = alpha.device) * 1e-8 #Numerical stabilty
+
+        new_z = sinkhorn(z)#TODO: by using sparse matrices it might be much faster
 
 
         alpha = new_z[edge_index_j, edge_index_i]
