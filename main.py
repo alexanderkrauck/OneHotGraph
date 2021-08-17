@@ -44,6 +44,8 @@ def main(
         model_class = baselines.GIN_Baseline
     if architecture == "sinkhorn":
         model_class = baselines.Sinkhorn_Baseline
+    if architecture == "gat":
+        model_class = baselines.GAT_Baseline
 
     data_module = data.DataModule("tox21_original", split_mode = "predefined")
     
