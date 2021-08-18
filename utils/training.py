@@ -14,12 +14,14 @@ import torch
 from sklearn.metrics import roc_auc_score
 import torch.nn.functional as F
 import tqdm
+import copy
+from os.path import join
 
 
 from torch.utils.tensorboard import SummaryWriter
 
 
-def train(model, optimizer, loader, n_classes, epoch: int, logger: SummaryWriter, dataset_class_names = None, device = "cpu", use_tqdm = False):
+def train(model, optimizer, loader: torch.utils.data.DataLoader, n_classes, epoch: int, logger: SummaryWriter, dataset_class_names = None, device = "cpu", use_tqdm = False):
 
     model.train()
 
@@ -55,7 +57,7 @@ def train(model, optimizer, loader, n_classes, epoch: int, logger: SummaryWriter
         loss.backward()
         optimizer.step()
 
-        logger.add_scalar(f"BCR_MultiTask", loss.detach().cpu().numpy(), global_step=n_minibatches * (epoch - 1) + batch_nr + 1)
+        logger.add_scalar(f"BCR_MultiTask", loss.detach().cpu().numpy(), global_step=loader.batch_size * ( n_minibatches * (epoch - 1) + batch_nr + 1))
 
         for i in range(n_classes):
             y = data.y[:,i]
@@ -110,12 +112,16 @@ def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_cla
             indices_list[i].append(indices)
             probs_list[i].append(probs)
         
+    metric_dict = {}
     for i, indices, probs in zip(range(n_classes), indices_list, probs_list):
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
-        logger.add_scalar(f"AUC-ROC/{run_type}/{dataset_class_names[i]}", roc_auc_score(indices, probs), global_step=epoch)
-
-    return 0.5, 0.5 # Derive ratio of correct predictions.
+        score = roc_auc_score(indices, probs)
+        metric_dict["AUC_ROC_"+dataset_class_names[i]] = score
+        logger.add_scalar(f"AUC-ROC/{run_type}/{dataset_class_names[i]}", score, global_step=epoch)
+    
+    metric_dict["Mean_AUC_ROC"] = np.mean(list(metric_dict.values()))
+    return metric_dict
 
 def train_config(
     model_class,
@@ -130,7 +136,8 @@ def train_config(
     weight_decay = 1e-8,
     batch_size = 64,
     epochs = 100, 
-    device = "cpu"
+    device = "cpu",
+    save = "best"
     ):
 
     model = model_class(
@@ -147,22 +154,59 @@ def train_config(
 
     train_loader = data_module.make_train_loader(batch_size = batch_size)
     val_loader = data_module.make_val_loader()
+    test_loader = data_module.make_test_loader()
 
     test(model, train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train", device = device)
-    test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
+    best_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
+    best_epoch_dict = {}
+
+    best_test_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
 
     for epoch in range(1, epochs + 1):
     
         train(model, optimizer, train_loader, data_module.num_classes, epoch, logger, data_module.class_names, device = device)
-        test(model, val_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device)
+        metric_dict = test(model, val_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device)
 
         logger.flush()
+
+        better_in = []
+        for metric in best_metric_dict:
+            if metric_dict[metric] > best_metric_dict[metric]:
+                better_in.append(metric)
+                best_metric_dict[metric] = metric_dict[metric]
+                best_epoch_dict[metric] = epoch
+
+        #Evaluate on test-set to obtain the true unbiased estimate
+        if len(better_in) != 0:
+            metric_dict = test(model, test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="test", device = device)
+            
+            for metric in better_in:
+
+                best_test_metric_dict[metric] = metric_dict
+                if save == "best":
+                    torch.save(model.state_dict(), join(logger.get_logdir(),f"best_{metric}.ckp"))#this overwrites the old
+                elif save == "all":
+                    torch.save(model.state_dict(), join(logger.get_logdir(),f"{metric}-{metric_dict[metric]}.ckp"))#this not
+
+
+    return best_test_metric_dict, best_epoch_dict
+
+
+    
 
 def dict_product(dicts):
 
     return (dict(zip(dicts, x)) for x in itertools.product(*dicts.values()))
 
-def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, logdir = "runs", device = "cpu"):
+def search_configs(
+    model_class, 
+    data_module, 
+    search_grid, 
+    randomly_try_n = -1, 
+    logdir = "runs", 
+    device = "cpu", 
+    epochs = 100,
+    save: str = "best"):
 
     configurations = [config for config in dict_product(search_grid)]
     print(f"Total number of Grid-Search configurations: {len(configurations)}")
@@ -186,10 +230,9 @@ def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, l
         dt = time()
     
 
-        logger = SummaryWriter(log_dir = logdir + "/" + config_str, comment = config_str)
-        #logger.add_hparams(config,  ,run_name= f"run{trial_nr}")
+        logger = SummaryWriter(log_dir = logdir + "/" + config_str, comment = config_str)        
 
-        train_config(
+        metric_dict, epoch_dict = train_config(
             model_class = model_class,
             data_module = data_module,
             logger = logger,
@@ -201,7 +244,23 @@ def search_configs(model_class, data_module, search_grid, randomly_try_n = -1, l
             weight_decay= config["weight_decay"],
             lr =  config["lr"], 
             batch_size = config["batch_size"],
-            device = device
+            device = device,
+            epochs = epochs,
+            save = save
             )
+
+        inverse_dict = dict((v,k) for k,v in epoch_dict.items())
+        for epoch in inverse_dict:
+            metric = inverse_dict[epoch]
+
+            copied_conf = copy.deepcopy(config)
+            copied_conf["epoch"] = epoch
+            curr_metric_dict = metric_dict[metric]
+            new_metric_dict = {}
+            for curr_metric in curr_metric_dict:
+                new_metric_dict["hparam/"+curr_metric] = curr_metric_dict[curr_metric]
+
+
+            logger.add_hparams(copied_conf, new_metric_dict, run_name= f"ep{epoch}")
             
         print(f"done (took {time() - dt:.2f}s)")

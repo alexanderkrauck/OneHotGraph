@@ -28,7 +28,9 @@ def main(
     logdir:str = "runs",
     configs:int = 5, 
     architecture:str = "GIN",
-    device:str = "cpu"):
+    device:str = "cpu",
+    epochs: int = 100,
+    save: str = "best"):
 
     #TODO: Add device check
     if torch.cuda.is_available():
@@ -67,7 +69,9 @@ def main(
             search_grid, 
             randomly_try_n = configs, 
             logdir = ldir,
-            device = device
+            device = device,
+            epochs = epochs,
+            save = save
             )
 
 
@@ -81,6 +85,10 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--configs", help="Number of configs to try", default=5)
     parser.add_argument("-a", "--architecture", help="The architecture of choice", default="GIN")
     parser.add_argument("-d", "--device", help="The device of choice", default="cpu")
+    parser.add_argument("-e", "--epochs", help="The number of epochs to run for each config", default=100)
+    parser.add_argument("-s", "--save", help="The save mode", default="best")
+
+
 
     args = parser.parse_args()
 
@@ -89,5 +97,8 @@ if __name__ == '__main__':
     configs = int(args.configs)
     architecture = str(args.architecture).lower()
     device = str(args.device)
+    epochs = int(args.epochs)
+    save = str(args.save)
 
-    main(name, logdir, configs, architecture, device)
+
+    main(name, logdir, configs, architecture, device, epochs, save)
