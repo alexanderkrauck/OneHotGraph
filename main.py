@@ -101,7 +101,7 @@ if __name__ == '__main__':
     device = str(args.device)
     epochs = int(args.epochs)
     save = str(args.save)
-    workers = str(args.workers)
+    workers = int(args.workers)
 
 
     main(name, logdir, configs, architecture, device, epochs, save, workers)
