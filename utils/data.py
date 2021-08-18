@@ -352,7 +352,7 @@ def fixed_split(dataset, test_ratio):
 class DataModule():
     """"""
 
-    def __init__(self, data_name: str, root_dir: str = "data", split_mode: str = "fixed", test_ratio: float = 0.2):
+    def __init__(self, data_name: str, root_dir: str = "data", split_mode: str = "fixed", test_ratio: float = 0.2, workers: int = 2):
         """
         
         Parameters
@@ -369,9 +369,13 @@ class DataModule():
             This is only used for "fixed" split_mode.
         batch_size: int
             The batch size of the training data loader.
+        workers: int
+            The number of workers the dataloaders are using
         """
         
         assert data_name in _names
+
+        self.workers = workers
 
         if data_name == "tox21":
             dataset = MoleculeNet(root="data", name="Tox21")
@@ -412,13 +416,13 @@ class DataModule():
 
 
     def make_train_loader(self, batch_size = 64):
-        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True)
+        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, num_workers = self.workers)
     
     def make_test_loader(self):
-        return DataLoader(self.test_dataset, batch_size=64, shuffle=False)
+        return DataLoader(self.test_dataset, batch_size=64, shuffle=False, num_workers = self.workers)
 
     def make_val_loader(self):
-        return DataLoader(self.val_dataset, batch_size=64, shuffle=False)
+        return DataLoader(self.val_dataset, batch_size=64, shuffle=False, num_workers = self.workers)
 
 
 

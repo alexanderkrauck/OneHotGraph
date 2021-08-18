@@ -30,7 +30,8 @@ def main(
     architecture:str = "GIN",
     device:str = "cpu",
     epochs: int = 100,
-    save: str = "best"):
+    save: str = "best",
+    workers: int = 2):
 
     #TODO: Add device check
     if torch.cuda.is_available():
@@ -43,7 +44,7 @@ def main(
             
     name = name.replace("*time*", datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
 
-    data_module = data.DataModule("tox21_original", split_mode = "predefined")
+    data_module = data.DataModule("tox21_original", split_mode = "predefined", workers = workers)
 
     n_architectures = len(architecture.split(","))
 
@@ -87,6 +88,7 @@ if __name__ == '__main__':
     parser.add_argument("-d", "--device", help="The device of choice", default="cpu")
     parser.add_argument("-e", "--epochs", help="The number of epochs to run for each config", default=100)
     parser.add_argument("-s", "--save", help="The save mode", default="best")
+    parser.add_argument("-w", "--workers", help="The number of workers the dataloaders use", default=2)
 
 
 
@@ -99,6 +101,7 @@ if __name__ == '__main__':
     device = str(args.device)
     epochs = int(args.epochs)
     save = str(args.save)
+    workers = str(args.workers)
 
 
-    main(name, logdir, configs, architecture, device, epochs, save)
+    main(name, logdir, configs, architecture, device, epochs, save, workers)
