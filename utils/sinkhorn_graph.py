@@ -1,3 +1,12 @@
+
+"""
+Implementation of a Sinkhorn Attention Graph
+"""
+
+__author__ = "Alexander Krauck"
+__email__ = "alexander.krauck@gmail.com"
+__date__ = "21-08-2021"
+
 from torch import nn
 from utils.basic_modules import GIN, MLP, GAT
 from torch_geometric import nn as gnn

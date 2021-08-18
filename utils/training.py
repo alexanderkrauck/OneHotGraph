@@ -121,6 +121,9 @@ def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_cla
         logger.add_scalar(f"AUC-ROC/{run_type}/{dataset_class_names[i]}", score, global_step=epoch)
     
     metric_dict["Mean_AUC_ROC"] = np.mean(list(metric_dict.values()))
+
+    logger.add_scalar(f"AUC-ROC/{run_type}/Mean_AUC_ROC", metric_dict["Mean_AUC_ROC"], global_step=epoch)
+
     return metric_dict
 
 def train_config(
@@ -137,7 +140,11 @@ def train_config(
     batch_size = 64,
     epochs = 100, 
     device = "cpu",
-    save = "best"
+    save = "best",
+    scheduler_patience = 10,
+    scheduler_min_lr = 1e-6,
+    scheduler_factor = 0.5,
+    scheduler_cooldown = 3
     ):
 
     model = model_class(
@@ -151,6 +158,8 @@ def train_config(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
+    
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "max", factor = scheduler_factor, patience=scheduler_patience, cooldown=scheduler_cooldown, min_lr=scheduler_min_lr)
 
     train_loader = data_module.make_train_loader(batch_size = batch_size)
     val_loader = data_module.make_val_loader()
@@ -168,6 +177,7 @@ def train_config(
         metric_dict = test(model, val_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device)
 
         logger.flush()
+            
 
         better_in = []
         for metric in best_metric_dict:
@@ -178,15 +188,23 @@ def train_config(
 
         #Evaluate on test-set to obtain the true unbiased estimate
         if len(better_in) != 0:
-            metric_dict = test(model, test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="test", device = device)
+            test_metric_dict = test(model, test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="test", device = device)
             
             for metric in better_in:
 
-                best_test_metric_dict[metric] = metric_dict
+                best_test_metric_dict[metric] = test_metric_dict
                 if save == "best":
                     torch.save(model.state_dict(), join(logger.get_logdir(),f"best_{metric}.ckp"))#this overwrites the old
                 elif save == "all":
-                    torch.save(model.state_dict(), join(logger.get_logdir(),f"{metric}-{metric_dict[metric]}.ckp"))#this not
+                    torch.save(model.state_dict(), join(logger.get_logdir(),f"{metric}-{test_metric_dict[metric]}.ckp"))#this not
+
+
+        lr_scheduler.step(metric_dict["Mean_AUC_ROC"])
+        if lr_scheduler.num_bad_epochs == scheduler_patience and lr_scheduler._last_lr[0] <= scheduler_min_lr + lr_scheduler.eps:
+            #if this is true => we are done!
+            break
+
+        
 
 
     return best_test_metric_dict, best_epoch_dict

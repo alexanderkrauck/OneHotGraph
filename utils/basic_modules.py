@@ -1,3 +1,12 @@
+
+"""
+Utility classes for basic modules to be used as components
+"""
+
+__author__ = "Alexander Krauck"
+__email__ = "alexander.krauck@gmail.com"
+__date__ = "21-08-2021"
+
 from torch import nn
 import torch
 
@@ -46,6 +55,17 @@ from torch.nn import ModuleList, Sequential, Linear, BatchNorm1d, ReLU
 
 from torch_geometric.nn.conv import GCNConv, SAGEConv, GINConv, GATConv
 from torch_geometric.nn.models.jumping_knowledge import JumpingKnowledge
+
+from typing import Union, Tuple, Optional
+from torch_geometric.typing import (OptPairTensor, Adj, Size, NoneType,
+                                    OptTensor)
+
+import torch
+from torch import Tensor
+import torch.nn.functional as F
+from torch.nn import Parameter, Linear
+from torch_sparse import SparseTensor, set_diag
+from torch_geometric.utils import remove_self_loops, add_self_loops
 
 
 class BasicGNN(torch.nn.Module):
@@ -270,3 +290,74 @@ class GAT(BasicGNN):
             GATConv(in_channels, out_channels, dropout=dropout, **kwargs))
         for _ in range(1, num_layers):
             self.convs.append(GATConv(hidden_channels, out_channels, **kwargs))
+
+#From me
+
+class GINGATConv(GATConv):
+    
+    def __init__(self, nn: Callable, in_channels: Union[int, Tuple[int, int]],
+                 out_channels: int, heads: int = 1, concat: bool = True,
+                 negative_slope: float = 0.2, dropout: float = 0.0,
+                 add_self_loops: bool = True, bias: bool = True, **kwargs):
+
+        super(GINGATConv, self).__init__(in_channels,
+                 out_channels, heads, concat,
+                 negative_slope, dropout,
+                 add_self_loops, bias, **kwargs)
+
+        
+        self.nn = nn
+
+    def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj,
+                size: Size = None, return_attention_weights=None):
+        # type: (Union[Tensor, OptPairTensor], Tensor, Size, NoneType) -> Tensor  # noqa
+        # type: (Union[Tensor, OptPairTensor], SparseTensor, Size, NoneType) -> Tensor  # noqa
+        # type: (Union[Tensor, OptPairTensor], Tensor, Size, bool) -> Tuple[Tensor, Tuple[Tensor, Tensor]]  # noqa
+        # type: (Union[Tensor, OptPairTensor], SparseTensor, Size, bool) -> Tuple[Tensor, SparseTensor]  # noqa
+        r"""
+        Args:
+            return_attention_weights (bool, optional): If set to :obj:`True`,
+                will additionally return the tuple
+                :obj:`(edge_index, attention_weights)`, holding the computed
+                attention weights for each edge. (default: :obj:`None`)
+        """
+
+        out = super(GINGATConv, self).forward(x, edge_index, size, return_attention_weights)
+
+        if isinstance(out, tuple):
+            out[0] = self.nn(out)
+        else:
+            out = self.nn(out)
+        
+        return out
+    
+class GINGAT(BasicGNN):
+
+    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
+                 dropout: float = 0.0,
+                 act: Optional[Callable] = ReLU(inplace=True),
+                 norm: Optional[torch.nn.Module] = None, jk: str = 'last',
+                 **kwargs):
+        super().__init__(in_channels, hidden_channels, num_layers, dropout,
+                         act, norm, jk)
+
+        if 'concat' in kwargs:
+            del kwargs['concat']
+
+        if 'heads' in kwargs:
+            assert hidden_channels % kwargs['heads'] == 0
+        out_channels = hidden_channels // kwargs.get('heads', 1)
+
+        self.convs.append(
+            GINGATConv(GINGAT.MLP(hidden_channels, hidden_channels), in_channels, out_channels, dropout=dropout, **kwargs))
+        for _ in range(1, num_layers):
+            self.convs.append(GINGATConv(GINGAT.MLP(hidden_channels, hidden_channels), hidden_channels, out_channels, **kwargs))
+
+    @staticmethod
+    def MLP(in_channels: int, out_channels: int) -> torch.nn.Module:
+        return Sequential(
+            Linear(in_channels, out_channels),
+            BatchNorm1d(out_channels),
+            ReLU(inplace=True),
+            Linear(out_channels, out_channels),
+        )

@@ -17,7 +17,7 @@ search_grid = {
     "base_dropout": [0.5, 0.2],
     "head_dropout": [0.5, 0.2],
     "lr": [1e-2, 1e-3],
-    "weight_decay": [1e-8, 1e-3],
+    "weight_decay": [0, 1e-10, 1e-8, 1e-5],
     "batch_size": [256, 64, 16]
 }
 
@@ -55,6 +55,8 @@ def main(
             model_class = baselines.Sinkhorn_Baseline
         elif a == "gat":
             model_class = baselines.GAT_Baseline
+        elif a == "gingat":
+            model_class = baselines.GINGAT_Baseline
         else:
             print(f"Model Class {a} is unknown... skipping")
             continue
