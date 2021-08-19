@@ -7,62 +7,21 @@ __author__ = "Alexander Krauck"
 __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
-from torch import nn
-from utils.basic_modules import GIN, MLP, GAT
-from torch_geometric import nn as gnn
 
-#Copied -> TODO: rewrite GAT-Conv to Sinkhorn-Conv 
-from typing import Union, Tuple, Optional
-from torch_geometric.typing import (OptPairTensor, Adj, Size, NoneType,
-                                    OptTensor)
+from typing import Optional, Callable, Union, Tuple
 
 import torch
 from torch import Tensor
 import torch.nn.functional as F
-from torch.nn import Parameter, Linear
-from torch_sparse import SparseTensor, set_diag
-from torch_geometric.nn.conv import MessagePassing, GATConv
-from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
-from torch_geometric.nn.inits import glorot, zeros
 
-
-
-
-from typing import Union, Tuple, Optional
-from torch_geometric.typing import (OptPairTensor, Adj, Size, NoneType,
-                                    OptTensor)
-
-import torch
-from torch import Tensor
-import torch.nn.functional as F
-from torch.nn import Parameter, Linear
-from torch_sparse import SparseTensor, set_diag
-from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
-from torch_geometric.nn.inits import glorot, zeros
-
-from typing import Optional, Callable, List
-from torch_geometric.typing import Adj
-
-import copy
-
-import torch
-from torch import Tensor
-import torch.nn.functional as F
-from torch.nn import ModuleList, Sequential, Linear, BatchNorm1d, ReLU
-
-from torch_geometric.nn.models.jumping_knowledge import JumpingKnowledge
+from torch_geometric.nn.conv import GATConv
+from torch_geometric.utils import softmax
+from torch_geometric.typing import (OptTensor)
 
 from utils.basic_modules import BasicGNN
 
 
 #https://github.com/btaba/sinkhorn_knopp
-
-
-import numpy as np
-
-
-
 def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False):
     """Fit the diagonal matrices in Sinkhorn Knopp's algorithm
 
@@ -181,28 +140,10 @@ class SinkhornGATConv(GATConv):
 
 
 class SinkhornGAT(BasicGNN):
-    r"""The Graph Neural Network from the `"Graph Attention Networks"
-    <https://arxiv.org/abs/1710.10903>`_ paper, using the
-    :class:`~torch_geometric.nn.GATConv` operator for message passing.
 
-    Args:
-        in_channels (int): Size of each input sample.
-        hidden_channels (int): Hidden node feature dimensionality.
-        num_layers (int): Number of GNN layers.
-        dropout (float, optional): Dropout probability. (default: :obj:`0.`)
-        act (Callable, optional): The non-linear activation function to use.
-            (default: :meth:`torch.nn.ReLU(inplace=True)`)
-        norm (torch.nn.Module, optional): The normalization operator to use.
-            (default: :obj:`None`)
-        jk (str, optional): The Jumping Knowledge mode
-            (:obj:`"last"`, :obj:`"cat"`, :obj:`"max"`, :obj:`"last"`).
-            (default: :obj:`"last"`)
-        **kwargs (optional): Additional arguments of
-            :class:`torch_geometric.nn.conv.GATConv`.
-    """
     def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
                  dropout: float = 0.0,
-                 act: Optional[Callable] = ReLU(inplace=True),
+                 act: Optional[Callable] = torch.nn.ReLU(inplace=True),
                  norm: Optional[torch.nn.Module] = None, jk: str = 'last',
                  **kwargs):
         super().__init__(in_channels, hidden_channels, num_layers, dropout,
