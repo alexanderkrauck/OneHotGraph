@@ -200,3 +200,5 @@ $RECYCLE.BIN/
 /other_repos
 /data
 /runs
+
+*.vscode
