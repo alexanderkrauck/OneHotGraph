@@ -11,7 +11,7 @@ from torch import nn
 import torch
 
 class MLP(nn.Module):
-    def __init__(self, n_layers: int, input_dim: int, hidden_dim: int, output_dim:int, dropout:float, activation):
+    def __init__(self, n_layers: int, input_dim: int, hidden_dim: int, output_dim:int, dropout:float, activation, **kwargs):
         super(MLP, self).__init__()
 
         if n_layers == 1:

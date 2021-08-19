@@ -15,13 +15,25 @@ from sklearn.metrics import roc_auc_score
 import torch.nn.functional as F
 import tqdm
 import copy
-from os.path import join
 
+from os.path import join
+from os import listdir
+import os
 
 from torch.utils.tensorboard import SummaryWriter
 
 
-def train(model, optimizer, loader: torch.utils.data.DataLoader, n_classes, epoch: int, logger: SummaryWriter, dataset_class_names = None, device = "cpu", use_tqdm = False):
+def train(
+    model: torch.nn.Module, 
+    optimizer: torch.optim.Optimizer, 
+    loader: torch.utils.data.DataLoader, 
+    n_classes: int, 
+    epoch: int, 
+    logger: SummaryWriter, 
+    dataset_class_names = None, 
+    device = "cpu", 
+    use_tqdm = False, 
+    **kwargs):
 
     model.train()
 
@@ -73,14 +85,29 @@ def train(model, optimizer, loader: torch.utils.data.DataLoader, n_classes, epoc
 
         batch_nr += 1
     
+    scores = []
     for i, indices, probs in zip(range(n_classes), indices_list, probs_list):
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
-        logger.add_scalar(f"AUC-ROC/train/{dataset_class_names[i]}", roc_auc_score(indices, probs), global_step=epoch)
+        scores.append(roc_auc_score(indices, probs))
+        logger.add_scalar(f"AUC-ROC/train/{dataset_class_names[i]}", scores[-1], global_step=epoch)
+
+    logger.add_scalar(f"AUC-ROC/train/Mean_AUC_ROC", np.mean(scores), global_step=epoch)
+
 
         
 
-def test(model, loader, n_classes, epoch:int, logger: SummaryWriter, dataset_class_names = None, run_type = "test", device = "cpu", use_tqdm = False):
+def test(
+    model: torch.nn.Module, 
+    loader: torch.optim.Optimizer, 
+    n_classes: int, 
+    epoch:int, 
+    logger: SummaryWriter, 
+    dataset_class_names = None, 
+    run_type = "test", 
+    device = "cpu", 
+    use_tqdm = False, 
+    **kwargs):
     model.eval()
 
     indices_list = [[] for d in range(n_classes)]
@@ -144,7 +171,8 @@ def train_config(
     scheduler_patience = 10,
     scheduler_min_lr = 1e-6,
     scheduler_factor = 0.5,
-    scheduler_cooldown = 3
+    scheduler_cooldown = 3,
+    **kwargs
     ):
 
     model = model_class(
@@ -153,7 +181,8 @@ def train_config(
         n_graph_layers = base_depth, 
         n_graph_dropout = base_dropout, 
         n_linear_layers = head_depth, 
-        n_linear_dropout = head_dropout
+        n_linear_dropout = head_dropout,
+        **kwargs
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -165,16 +194,16 @@ def train_config(
     val_loader = data_module.make_val_loader()
     test_loader = data_module.make_test_loader()
 
-    test(model, train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train", device = device)
-    best_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
+    test(model, train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train", device = device, **kwargs)
+    best_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device, **kwargs)
     best_epoch_dict = {}
 
-    best_test_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device)
+    best_test_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device, **kwargs)
 
     for epoch in range(1, epochs + 1):
     
-        train(model, optimizer, train_loader, data_module.num_classes, epoch, logger, data_module.class_names, device = device)
-        metric_dict = test(model, val_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device)
+        train(model, optimizer, train_loader, data_module.num_classes, epoch, logger, data_module.class_names, device = device, **kwargs)
+        metric_dict = test(model, val_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device, **kwargs)
 
         logger.flush()
             
@@ -188,7 +217,7 @@ def train_config(
 
         #Evaluate on test-set to obtain the true unbiased estimate
         if len(better_in) != 0:
-            test_metric_dict = test(model, test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="test", device = device)
+            test_metric_dict = test(model, test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="test", device = device, **kwargs)
             
             for metric in better_in:
 
@@ -224,25 +253,32 @@ def search_configs(
     logdir = "runs", 
     device = "cpu", 
     epochs = 100,
-    save: str = "best"):
+    save: str = "best",
+    **kwargs):
 
     configurations = [config for config in dict_product(search_grid)]
     print(f"Total number of Grid-Search configurations: {len(configurations)}")
+    if os.path.exists(logdir):
+        existing_dirs = listdir(logdir)
+    else:
+        existing_dirs = []
 
     if randomly_try_n == -1:
-        do_indices = range(len(configurations))
+        randomly_try_n = len(configurations)
     else:
         do_indices = np.random.choice(len(configurations), size=randomly_try_n)
     
     print(f"Number of configurations now being trained {len(do_indices)}")
     print("--------------------------------------------------------------------------------------------\n")
     
-    for trial_nr, idx in enumerate(do_indices):
-        
-        config = configurations[idx]
+    tried = 0
+    while randomly_try_n > tried:
 
-
+        idx = np.random.choice(len(configurations))
+        config = configurations.pop(idx)
         config_str = str(config).replace("'","").replace(":", "-").replace(" ", "").replace("}", "").replace("_","").replace(",", "_").replace("{","_")
+        if config_str in existing_dirs:
+            continue
 
         print(f"Training config {config_str} ... ", end="")
         dt = time()
@@ -264,7 +300,8 @@ def search_configs(
             batch_size = config["batch_size"],
             device = device,
             epochs = epochs,
-            save = save
+            save = save,
+            **kwargs
             )
 
         inverse_dict = dict((v,k) for k,v in epoch_dict.items())
