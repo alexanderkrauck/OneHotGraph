@@ -7,8 +7,13 @@ __author__ = "Alexander Krauck"
 __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
+from numpy.core.numeric import ones_like
 from torch._C import device
 from utils.basic_modules import BasicGNN
+from torch_scatter import gather_csr, scatter, segment_csr
+from torch_sparse import coalesce
+
+
 
 import torch
 
@@ -80,7 +85,7 @@ class OneHotConv(MessagePassing):
         glorot(self.att_r)
         zeros(self.bias)
 
-    def forward(self, x: Union[Tensor, OptPairTensor], onehot: SparseTensor, edge_index: Adj, size: Size = None, return_attention_weights=None):
+    def forward(self, x: Union[Tensor, OptPairTensor], onehot: Tensor, edge_index: Adj, size: Size = None):
 
         H, C = self.heads, self.out_channels
 
@@ -118,9 +123,10 @@ class OneHotConv(MessagePassing):
                 edge_index = set_diag(edge_index)
 
         assert x_l.shape[0] == x.shape[0]#mine
-
+        onehot = onehot.unsqueeze(1)
         # propagate_type: (x: OptPairTensor, alpha: OptPairTensor)
-        out = self.propagate(edge_index, onehot = onehot, x=(x_l, x_r), alpha=(alpha_l, alpha_r), size=size)
+        out, onehot_out = self.propagate(edge_index, onehot = onehot, x=(x_l, x_r), alpha=(alpha_l, alpha_r), size=size)
+        onehot_out.squeeze(1)
 
         alpha = self._alpha
         self._alpha = None
@@ -133,14 +139,14 @@ class OneHotConv(MessagePassing):
         if self.bias is not None:
             out += self.bias
 
-        if isinstance(return_attention_weights, bool):
-            assert alpha is not None
-            if isinstance(edge_index, Tensor):
-                return out, (edge_index, alpha)
-            elif isinstance(edge_index, SparseTensor):
-                return out, edge_index.set_value(alpha, layout='coo')
-        else:
-            return out
+        return out, onehot_out
+
+    @staticmethod
+    def sparse_dense_mul(s, d):#multiplies along the first (index=0) dim
+        i = s._indices()
+        v = s._values()
+        dv = d[i[0,:]]  # get values from relevant entries of dense matrix
+        return torch.sparse.FloatTensor(i, v * dv, s.size())
 
     def message(self, x_j: Tensor, onehot_j: Tensor, alpha_j: Tensor, alpha_i: OptTensor,
                 index: Tensor, ptr: OptTensor,
@@ -151,7 +157,12 @@ class OneHotConv(MessagePassing):
         alpha = softmax(alpha, index, ptr, size_i)
         self._alpha = alpha
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-        return x_j * alpha.unsqueeze(-1)
+
+        #onehot_j = OneHotConv.sparse_dense_mul(onehot_j, alpha.squeeze())
+        x_j = x_j * alpha.unsqueeze(-1)
+        onehot_j = onehot_j * alpha.unsqueeze(-1)
+
+        return x_j, onehot_j #maybe use attention here?
 
     def __repr__(self):
         return '{}({}, {}, heads={})'.format(self.__class__.__name__,
@@ -159,7 +170,22 @@ class OneHotConv(MessagePassing):
                                              self.out_channels, self.heads)
 
     def aggregate(self, inputs: Tensor, index: Tensor, ptr: Optional[Tensor], dim_size: Optional[int]) -> Tensor:
-        return super().aggregate(inputs, index, ptr=ptr, dim_size=dim_size)
+        x_j, onehot_j = inputs 
+
+        aggregated_x_j = scatter(x_j, index, dim=self.node_dim, dim_size=dim_size, reduce=self.aggr)
+        aggregated_onehot_j = scatter(onehot_j, index, dim=self.node_dim, dim_size=dim_size, reduce="add")
+
+
+
+        return aggregated_x_j, aggregated_onehot_j
+
+    def update(self, inputs: Tensor, onehot: SparseTensor) -> Tensor:
+        aggregated_x_j, aggregated_onehot_j = inputs
+
+        return aggregated_x_j, aggregated_onehot_j + onehot
+
+
+
 
 class OneHotGraph(BasicGNN):
 
@@ -186,16 +212,19 @@ class OneHotGraph(BasicGNN):
     def forward(self, x: Tensor, edge_index: Adj, *args, **kwargs) -> Tensor:
         xs: List[Tensor] = []
 
-        coords = torch.arange(0, len(x), device = x.device).unsqueeze(0).repeat([2, 1])
-        sparse_identity = torch.sparse_coo_tensor(coords, torch.ones(len(x), device = x.device), (len(x), len(x)), device = x.device)
-        one_hot = torch.sparse_coo_tensor(size=(len(x), len(x)), device = x.device)
+        #coords = torch.arange(0, len(x), device = x.device).unsqueeze(0).repeat([2, 1])
+        #sparse_identity = torch.sparse_coo_tensor(coords, torch.ones(len(x), device = x.device), (len(x), len(x)), device = x.device)
+        #one_hot = torch.sparse_coo_tensor(size=(len(x), len(x)), device = x.device)
+        n_nodes = len(x)
+        device = x.device
+        one_hot = torch.eye(n_nodes, device=device)#torch.zeros((n_nodes, n_nodes), device = device)
 
         for i in range(self.num_layers):
 
             #print(x.shape, "\n", x)
-            one_hot += sparse_identity#might not be required -> selfloops
+            #might not be required -> selfloops
 
-            x = self.convs[i](x, one_hot, edge_index, *args, **kwargs)
+            x, one_hot = self.convs[i](x, one_hot, edge_index, *args, **kwargs)
             if self.norms is not None:
                 x = self.norms[i](x)
             if self.act is not None:
