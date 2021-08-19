@@ -57,6 +57,8 @@ def main(
             model_class = baselines.GAT_Baseline
         elif a == "gingat":
             model_class = baselines.GINGAT_Baseline
+        elif a == "onehotgraph" or a == "onehot" or a == "ohg":
+            model_class = baselines.OneHotGraph_Baseline
         else:
             print(f"Model Class {a} is unknown... skipping")
             continue
@@ -86,7 +88,7 @@ if __name__ == '__main__':
     parser.add_argument("-n", "--name", help="Name of the experiment", default=f"*time*")
     parser.add_argument("-l", "--logdir", help="Directories where logs are stored", default=f"runs")
     parser.add_argument("-c", "--configs", help="Number of configs to try", default=5)
-    parser.add_argument("-a", "--architecture", help="The architecture of choice", default="GIN")
+    parser.add_argument("-a", "--architecture", help="The architecture of choice", default="ohg")
     parser.add_argument("-d", "--device", help="The device of choice", default="cpu")
     parser.add_argument("-e", "--epochs", help="The number of epochs to run for each config", default=100)
     parser.add_argument("-s", "--save", help="The save mode", default="best")
