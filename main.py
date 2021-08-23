@@ -115,6 +115,6 @@ if __name__ == '__main__':
     epochs = int(args.epochs)
     save = str(args.save)
     workers = int(args.workers)
-    yaml_file = str(yaml)
+    yaml_file = str(args.yaml)
 
     main(name, logdir, configs, architecture, device, epochs, save, workers, yaml_file)
