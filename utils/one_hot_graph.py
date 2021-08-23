@@ -105,9 +105,26 @@ class OneHotConv(nn.Module):
         edge_index: Adj, 
         batch_sample_indices: Tensor,
         n_sample_nodes: Tensor,
-        adjs: List[Tensor], 
-        size: Size = None
+        adjs: List[Tensor],
+        **kwargs
         ):
+        """
+
+        Parameters
+        ----------
+        x: Union[torch.Tensor, OptPairTensor]
+            The main channels of the graph-nodes
+        onehots: List[Tensor]
+            The 'special' one-hot channels of each node. Each list element corresponds to one graph
+        edge_index: Adj
+            The sending and receiving graph connection. I.e. the adjacent matrix of all the graphs in one batch
+        batch_sample_indices: Tensor
+            The index of the sample inside the minibatch the node corresponds to
+        n_sample_nodes: Tensor
+            For each graph in the minibatch the number of nodes
+        adjs: List[Tensor]
+            The same as in edge_index but seperate for each graph in the minibatch
+        """
         
         #Onehot Convolution (mine)
         if self.one_hot_mode == "conv":
@@ -148,7 +165,6 @@ class OneHotConv(nn.Module):
             sample_indices = batch_sample_indices, 
             x = x, 
             alphas = (sending_alphas, receiving_alpha), 
-            size = size,
             n_sample_nodes = n_sample_nodes,
             adjs = adjs
         )
@@ -163,7 +179,7 @@ class OneHotConv(nn.Module):
 
         return x, onehots
 
-    def propagate(self, x, onehots, index, sample_indices, n_sample_nodes, adjs, alphas, size, **kwargs):
+    def propagate(self, x, onehots, index, sample_indices, n_sample_nodes, adjs, alphas, **kwargs):
         sending_indices = index[0]
         receiving_indices = index[1]
 
@@ -205,13 +221,11 @@ class OneHotConv(nn.Module):
         self, 
         selected_x: Tensor, 
         selected_onehots: Tensor, 
-        sample_indices: Tensor,
-        n_sample_nodes: Tensor,
         selected_alphas: Tensor, 
         receiving_alphas: OptTensor,
         receiving_index: Tensor, 
         **kwargs
-        ) -> Tensor:
+        ) -> Tuple[Tensor, List[Tensor]]:
 
         alpha = selected_alphas if receiving_alphas is None else selected_alphas + receiving_alphas
         alpha = F.leaky_relu(alpha, self.negative_slope)
@@ -221,18 +235,18 @@ class OneHotConv(nn.Module):
 
         weighted_selected_x = selected_x * alpha.unsqueeze(-1)
 
-        if self.one_hot_attention:
-            cumsumed_n_sample_nodes = torch.tensor([len(l) for l in selected_onehots], device = selected_x.device).cumsum(0)
-            weighted_selected_onehots = []
+        if self.one_hot_attention:#TODO:Attention:This might not be true (sorted) -> only matters if I use this!
+            cumsumed_sending_lenghts = torch.tensor([len(l) for l in selected_onehots], device = selected_x.device).cumsum(0)
+            weighted_sending_onehots = []
             for idx in range(len(selected_onehots)):
                 if idx == 0:
                     idx0 = 0
                 else:
-                    idx0 = cumsumed_n_sample_nodes[idx - 1]
-                idx1 = cumsumed_n_sample_nodes[idx]
-                weighted_selected_onehots.append(selected_onehots[idx] * alpha[idx0: idx1])
+                    idx0 = cumsumed_sending_lenghts[idx - 1]
+                idx1 = cumsumed_sending_lenghts[idx]
+                weighted_sending_onehots.append(selected_onehots[idx] * alpha[idx0: idx1])
 
-            return weighted_selected_x, weighted_selected_onehots
+            return weighted_selected_x, weighted_sending_onehots
         
         return weighted_selected_x, selected_onehots
 
@@ -242,8 +256,9 @@ class OneHotConv(nn.Module):
         weighted_selected_onethots, 
         receiving_indices: Tensor, 
         adjs,
-        n_sample_nodes: Tensor
-        ) -> Tensor:
+        n_sample_nodes: Tensor,
+        **kwargs
+        ) -> Tuple[Tensor, List[Tensor]]:
 
         aggregated_selected_x = torch_scatter.scatter(weighted_selected_x, receiving_indices, dim=0, dim_size=n_sample_nodes.sum(), reduce="sum")
         
@@ -257,8 +272,9 @@ class OneHotConv(nn.Module):
         self, 
         aggregated_selected_x: Tensor, 
         aggregated_selected_onehots: List[Tensor],
-        onehots: List[Tensor]
-        ) -> Tensor:
+        onehots: List[Tensor],
+        **kwargs
+        ) -> Tuple[Tensor, List[Tensor]]:
 
         new_onehots = []
         for idx in range(len(aggregated_selected_onehots)):
@@ -269,33 +285,38 @@ class OneHotConv(nn.Module):
 
 
 
-class OneHotGraph(BasicGNN):
+class OneHotGraph(nn.Module):
 
-    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
-                 dropout: float = 0.0,
-                 act: Optional[Callable] = nn.ReLU(inplace=True),
-                 norm: Optional[torch.nn.Module] = None, jk: str = 'last',
-                 **kwargs):
-        super().__init__(in_channels, hidden_channels, num_layers, dropout,
-                         act, norm, jk)
+    def __init__(
+        self, 
+        in_channels: int, 
+        hidden_channels: int, 
+        num_layers: int,
+        dropout: float = 0.0,
+        heads = 1,
+        act: Optional[Callable] = nn.ReLU(inplace=True),
+        **kwargs
+        ):
+        super(OneHotGraph, self).__init__()
 
-        if 'concat' in kwargs:
-            del kwargs['concat']
+        assert hidden_channels % heads == 0
 
-        if 'heads' in kwargs:
-            assert hidden_channels % kwargs['heads'] == 0
-        out_channels = hidden_channels // kwargs.get('heads', 1)
+        out_channels = hidden_channels // heads
 
-        self.convs.append(
-            OneHotConv(in_channels, out_channels, dropout=dropout, **kwargs))
+        self.convs = nn.ModuleList()
+
+        self.convs.append(OneHotConv(in_channels, out_channels, dropout=dropout, heads = heads, **kwargs))
         for _ in range(1, num_layers):
-            self.convs.append(OneHotConv(hidden_channels, out_channels, **kwargs))
+            self.convs.append(OneHotConv(hidden_channels, out_channels, heads = heads, **kwargs))
+
+
+        self.dropout = dropout
+        self.act = act
+        self.num_layers = num_layers
 
     def forward(self, x: Tensor, edge_index: Adj, batch_sample_indices, n_sample_nodes, adjs, *args, **kwargs) -> Tensor:
 
-        xs: List[Tensor] = []
         device = x.device
-
         one_hots = OneHotGraph.initializeOneHots(n_sample_nodes, device)
 
         for i in range(self.num_layers):
