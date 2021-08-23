@@ -109,11 +109,11 @@ class OneHotConv(nn.Module):
         size: Size = None
         ):
         
-        #Onehot Action
+        #Onehot Convolution (mine)
         if self.one_hot_mode == "conv":
             onethot_res = []
             for onehot in onehots:
-                onehot, _ = onehot.sort(dim = -1)
+                onehot, _ = onehot.sort(dim = -1)#sort such that the pattern is invariant
 
                 onethot_res.append(self.onehot_pipe(onehot.unsqueeze(1)))
             onethot_res = torch.vstack(onethot_res)
@@ -124,6 +124,7 @@ class OneHotConv(nn.Module):
 
         sending_alphas = (x * self.att_l).sum(dim=-1)
         receiving_alpha = (x * self.att_r).sum(dim=-1)
+
 
         if self.add_self_loops:
             num_nodes = n_sample_nodes.sum()
@@ -139,8 +140,6 @@ class OneHotConv(nn.Module):
                 adj, _  = torch_geometric.utils.add_self_loops(adj, num_nodes = n_nodes)
 
                 adjs[idx] = adj
-
-
 
 
         x, onehots = self.propagate(
@@ -269,6 +268,7 @@ class OneHotConv(nn.Module):
 
 
 
+
 class OneHotGraph(BasicGNN):
 
     def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
@@ -296,17 +296,20 @@ class OneHotGraph(BasicGNN):
         xs: List[Tensor] = []
         device = x.device
 
+        one_hots = OneHotGraph.initializeOneHots(n_sample_nodes, device)
+
+        for i in range(self.num_layers):
+            x, one_hots = self.convs[i](x, one_hots, edge_index, batch_sample_indices, n_sample_nodes, adjs, *args, **kwargs)
+            x = self.act(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+
+        return x
+
+    @staticmethod
+    def initializeOneHots(n_sample_nodes, device):
+
         one_hots = []
         for n in n_sample_nodes:
             one_hots.append(torch.eye(n, device=device))
 
-        for i in range(self.num_layers):
-            x, one_hot = self.convs[i](x, one_hots, edge_index, batch_sample_indices, n_sample_nodes, adjs, *args, **kwargs)
-            if self.norms is not None:
-                x = self.norms[i](x)
-            if self.act is not None:
-                x = self.act(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-            if self.jk is not None:
-                xs.append(x)
-        return x if self.jk is None else self.jk(xs)
+        return one_hots
