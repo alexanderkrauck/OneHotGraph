@@ -4,6 +4,7 @@ channels:
   - conda-forge
   - pytorch
   - rusty1s 
+  - anaconda
 dependencies:
   - rdkit
   - torchvision
@@ -15,3 +16,4 @@ dependencies:
   - ipykernel
   - tensorboard
   - notebook
+  - pyyaml
