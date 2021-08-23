@@ -21,7 +21,7 @@ class GIN_Baseline(nn.Module):
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
-    def forward(self, x, edge_index, batch_sample_indices):
+    def forward(self, x, edge_index, batch_sample_indices, **kwargs):
         # 1. Obtain node embeddings 
         x = self.gin(x, edge_index)
 
@@ -40,7 +40,7 @@ class GAT_Baseline(nn.Module):
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
-    def forward(self, x, edge_index, batch_sample_indices):
+    def forward(self, x, edge_index, batch_sample_indices, **kwargs):
         # 1. Obtain node embeddings 
         x = self.gat(x, edge_index)
 
@@ -59,7 +59,7 @@ class Sinkhorn_Baseline(nn.Module):
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU(), **kwargs)
 
-    def forward(self, x, edge_index, batch_sample_indices):
+    def forward(self, x, edge_index, batch_sample_indices, **kwargs):
         # 1. Obtain node embeddings 
         x = self.sinkhorn_gat(x, edge_index)
 
@@ -78,7 +78,7 @@ class GINGAT_Baseline(nn.Module):
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
-    def forward(self, x, edge_index, batch_sample_indices):
+    def forward(self, x, edge_index, batch_sample_indices, **kwargs):
         # 1. Obtain node embeddings 
         x = self.gingat(x, edge_index)
 
@@ -97,9 +97,9 @@ class OneHotGraph_Baseline(nn.Module):
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
-    def forward(self, x, edge_index, batch_sample_indices):
+    def forward(self, x, edge_index, batch_sample_indices, n_sample_nodes, adjs, **kwargs):
         # 1. Obtain node embeddings 
-        x = self.ohg(x, edge_index)
+        x = self.ohg(x, edge_index, batch_sample_indices, n_sample_nodes, adjs)
 
         # 2. Readout layer
         x = gnn.global_mean_pool(x, batch_sample_indices)  # [batch_size, hidden_channels]

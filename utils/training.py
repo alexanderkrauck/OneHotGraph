@@ -51,10 +51,15 @@ def train(
         iterate = loader
 
     batch_nr = 0
-    for data in iterate:
+    for minibatch in iterate:
+
+        data = minibatch[0]
+        n_sample_nodes = minibatch[1]
+        adjs = minibatch[2]
+
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
 
-        out = model(x, edge_index, batch)
+        out = model(x, edge_index, batch, n_sample_nodes = n_sample_nodes, adjs = adjs)
 
         y = data.y.to(device)
         is_not_nan = ~y.isnan()
@@ -121,12 +126,15 @@ def test(
     else:
         iterate = loader
 
-    for data in iterate:  # Iterate in batches over the training/test dataset.
+    for minibatch in iterate:  # Iterate in batches over the training/test dataset.
+
+        data = minibatch[0]
+        n_sample_nodes = minibatch[1].to(device)
+        adjs = [adj.to(device) for adj in minibatch[2]]
+
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
-        #batch containts for each x to which sample in the minibatch it belongs.
 
-        out = model(x, edge_index, batch)
-
+        out = model(x, edge_index, batch, n_sample_nodes = n_sample_nodes, adjs = adjs)
         for i in range(n_classes):
             y = data.y[:,i]
             is_not_nan = ~y.isnan()
@@ -273,6 +281,8 @@ def search_configs(
     
     tried = 0
     while randomly_try_n > tried:
+
+        tried += 1
 
         idx = np.random.choice(len(configurations))
         config = configurations.pop(idx)

@@ -8,48 +8,27 @@ __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
 
-from  torch_geometric.data import Dataset
-from torch_geometric.data import DataLoader
-from torch_geometric.data import InMemoryDataset
-from torch_geometric.io import parse_txt_array
+from torch_geometric import data
+from torch_geometric.data import Data, InMemoryDataset, download_url, extract_gz
+from torch.utils.data import DataLoader
 from torch_geometric.data import Data
+from torch_geometric.data.dataloader import Collater
 
 import torch
-import torch.nn.functional as F
-from torch_sparse import coalesce
 
 import pandas as pd
 import numpy as np
 
-from os.path import join
+import os
+import re
 
 from rdkit import Chem
+
 
 _names = [
     "tox21",  #The tox21 dataset which is provided in the torch_geometric.datasets.MoleculeNet
     "tox21_original" #The tox21 dataset how it was originally and avaiable at
 ]
-
-
-
-elems = {'H': 0, 'C': 1, 'N': 2, 'O': 3, 'F': 4, "Cl":5, "Br":6, "Na":7, "S":8, "Hg" :9, "I":10, "P":11, "Ca":12, "Pt":13, "As":14, 
-"B":15, "Sn":16, "Bi":17, "Co":18, "K":19, "Fe":20, "Gd":21, "Zn":22, "Al":23, 
-"Au":24, "Si":25, "Cu":26, "Cr":27, "Cd":28, "V":29, "Li":30, "Se":31, "Ag":32, "Sb":33, "Ba":34, "D":35, "Ti":36, "Tl":37, "Sr":38, "In":39, "Dy":40, "Ni":41, "Be":42,
-"Mg":43, "Nd":44, "Pd":45, "Mn":46, "Zr":47, "Pb":48, "Yb":49, "Mo":50, "Ge":51, "Ru":52, "Eu":53, "Sc":54
-}
-
-import os
-import os.path as osp
-import re
-
-import torch
-from torch_geometric.data import (InMemoryDataset, Data, download_url,
-                                  extract_gz)
-
-try:
-    from rdkit import Chem
-except ImportError:
-    Chem = None
 
 x_map = {
     'atomic_num':
@@ -103,34 +82,6 @@ e_map = {
 
 
 class MoleculeNet(InMemoryDataset):
-    r"""The `MoleculeNet <http://moleculenet.ai/datasets-1>`_ benchmark
-    collection  from the `"MoleculeNet: A Benchmark for Molecular Machine
-    Learning" <https://arxiv.org/abs/1703.00564>`_ paper, containing datasets
-    from physical chemistry, biophysics and physiology.
-    All datasets come with the additional node and edge features introduced by
-    the `Open Graph Benchmark <https://ogb.stanford.edu/docs/graphprop/>`_.
-
-    Args:
-        root (string): Root directory where the dataset should be saved.
-        name (string): The name of the dataset (:obj:`"ESOL"`,
-            :obj:`"FreeSolv"`, :obj:`"Lipo"`, :obj:`"PCBA"`, :obj:`"MUV"`,
-            :obj:`"HIV"`, :obj:`"BACE"`, :obj:`"BBPB"`, :obj:`"Tox21"`,
-            :obj:`"ToxCast"`, :obj:`"SIDER"`, :obj:`"ClinTox"`).
-        transform (callable, optional): A function/transform that takes in an
-            :obj:`torch_geometric.data.Data` object and returns a transformed
-            version. The data object will be transformed before every access.
-            (default: :obj:`None`)
-        pre_transform (callable, optional): A function/transform that takes in
-            an :obj:`torch_geometric.data.Data` object and returns a
-            transformed version. The data object will be transformed before
-            being saved to disk. (default: :obj:`None`)
-        pre_filter (callable, optional): A function that takes in an
-            :obj:`torch_geometric.data.Data` object and returns a boolean
-            value, indicating whether the data object should be included in the
-            final dataset. (default: :obj:`None`)
-    """
-
-    url = 'https://deepchemdata.s3-us-west-1.amazonaws.com/datasets/{}'
 
     # Format: name: [display_name, url_name, csv_name, smiles_idx, y_idx]
     names = {
@@ -171,11 +122,11 @@ class MoleculeNet(InMemoryDataset):
 
     @property
     def raw_dir(self):
-        return osp.join(self.root, self.name, 'raw')
+        return os.path.join(self.root, self.name, 'raw')
 
     @property
     def processed_dir(self):
-        return osp.join(self.root, self.name, 'processed')
+        return os.path.join(self.root, self.name, 'processed')
 
     @property
     def raw_file_names(self):
@@ -270,71 +221,6 @@ class MoleculeNet(InMemoryDataset):
         return '{}({})'.format(self.names[self.name][0], len(self))
 
 
-def parse_sdf(src, targets):
-    graph_list = []
-    mols = src.split("$$$$\n")[:-1]
-
-    assert len(targets) == len(mols)
-
-    for mol, y in zip(mols, targets):
-
-        mol = mol.split('\n')[3:]
-
-        num_atoms, num_bonds = int(mol[0][:3]), int(mol[0][3:6])#there is always a 3 digit space for them
-
-        atom_block = mol[1:num_atoms + 1]
-
-        pos = parse_txt_array(atom_block, end=3)
-
-        x = torch.tensor([elems[item.split()[3]] for item in atom_block])#this could be made dynamically...
-        x = F.one_hot(x, num_classes=len(elems))
-
-        bond_block = mol[1 + num_atoms:1 + num_atoms + num_bonds]
-
-
-        if len(bond_block) != 0:
-            left = []
-            right = []
-            attr = []
-            for bond_line in bond_block:
-                left.append(int(bond_line[:3]) - 1)
-                right.append(int(bond_line[3:6]) - 1)
-                attr.append(int(bond_line[6:9]) - 1)
-
-            left, right, attr = torch.tensor(left, dtype=torch.long), torch.tensor(right, dtype=torch.long), torch.tensor(attr, dtype=torch.long)
-
-            left, right = torch.cat([left, right], dim=0), torch.cat([right, left], dim=0)
-            edge_index = torch.stack([left, right], dim=0)
-            attr = torch.cat([attr, attr], dim=0)
-
-            edge_index, attr = coalesce(edge_index, attr, num_atoms, num_atoms)
-        else:
-            edge_index, attr = None, None
-
-        graph = Data(x=x, edge_index=edge_index, edge_attr=attr, pos = pos, y=torch.tensor(y.astype(np.float32)))
-        graph_list.append(graph)
-
-    return graph_list
-
-
-
-def read_sdf(path, targets):
-    with open(path, 'r') as f:
-        return parse_sdf(f.read(), targets)
-
-class ListDataSet(Dataset):
-    def __init__(self, data_list):
-        self.data_list = np.array(data_list)
-
-    def __len__(self):
-        return len(self.data_list)
-
-    def __getitem__(self, idx):
-        if isinstance(idx, int):
-            return self.data_list[idx]
-        if isinstance(idx, (slice, np.ndarray, list)):
-            return ListDataSet(self.data_list[idx])
-
 def fixed_split(dataset, test_ratio):
 
     test_size = int(len(dataset) * test_ratio)
@@ -348,6 +234,13 @@ def fixed_split(dataset, test_ratio):
     train_dataset = dataset[shuffled_indices[test_size * 2:]]
 
     return train_dataset, val_dataset, test_dataset
+
+# class SeperateDataLoader(DataLoader):
+    
+#     def __init__(self, **kwargs):
+#         pass
+
+#     def __
 
 class DataModule():
     """"""
@@ -396,7 +289,7 @@ class DataModule():
             self.dataset_size = len(dataset)
             self.num_classes = dataset.num_classes
             self.num_node_features = dataset.num_node_features
-            info_file = pd.read_csv(join(root_dir,"tox21_original","infofile.csv"), sep=",", header=0)
+            info_file = pd.read_csv(os.path.join(root_dir,"tox21_original","infofile.csv"), sep=",", header=0)
 
             self.class_names = info_file.columns[-12:]
 
@@ -416,13 +309,23 @@ class DataModule():
 
 
     def make_train_loader(self, batch_size = 64):
-        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, num_workers = self.workers)
+        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=False, num_workers = self.workers, collate_fn = collate_fn)
     
     def make_test_loader(self):
-        return DataLoader(self.test_dataset, batch_size=64, shuffle=False, num_workers = self.workers)
+        return DataLoader(self.test_dataset, batch_size=64, shuffle=False, num_workers = self.workers, collate_fn = collate_fn)
 
     def make_val_loader(self):
-        return DataLoader(self.val_dataset, batch_size=64, shuffle=False, num_workers = self.workers)
+        return DataLoader(self.val_dataset, batch_size=64, shuffle=False, num_workers = self.workers, collate_fn = collate_fn)
+
+def collate_fn(batch):
+
+    lens = torch.tensor([len(b.x) for b in batch])
+    adjs = [b.edge_index for b in batch]
+
+    col = Collater([], [])
+    merged_data = col(batch)
+
+    return merged_data, lens, adjs
 
 
 
