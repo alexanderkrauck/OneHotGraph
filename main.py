@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+
+import yaml
+
 from datetime import datetime
 from argparse import ArgumentParser
 
@@ -10,7 +13,7 @@ import utils.training as training
 import utils.baselines as baselines
 import utils.sinkhorn_graph as sinkhorn_graph
 
-search_grid = {
+default_search_grid = {
     "hidden_channels": [64, 256, 1028],
     "head_depth": [1,2,3,4],
     "base_depth": [3,5,10],
@@ -21,8 +24,6 @@ search_grid = {
     "batch_size": [256, 64, 16]
 }
 
-
-
 def main(
     name:str = "*time*",#*time* is replaced by the datetime
     logdir:str = "runs",
@@ -31,7 +32,8 @@ def main(
     device:str = "cpu",
     epochs: int = 100,
     save: str = "best",
-    workers: int = 2):
+    workers: int = 2,
+    yaml_file: str = ""):
 
     #TODO: Add device check
     if torch.cuda.is_available():
@@ -47,6 +49,12 @@ def main(
     data_module = data.DataModule("tox21_original", split_mode = "predefined", workers = workers)
 
     n_architectures = len(architecture.split(","))
+
+    if yaml_file == "":
+        search_grid = default_search_grid
+    else:
+        with open(yaml_file, 'r') as file:
+            search_grid = yaml.safe_load(file)
 
     for a in architecture.split(","):
         if a == "gin":
@@ -93,6 +101,7 @@ if __name__ == '__main__':
     parser.add_argument("-e", "--epochs", help="The number of epochs to run for each config", default=100)
     parser.add_argument("-s", "--save", help="The save mode", default="best")
     parser.add_argument("-w", "--workers", help="The number of workers the dataloaders use", default=2)
+    parser.add_argument("-y", "--yaml", help="The yaml file with the search grid", default = "")
 
 
 
@@ -106,6 +115,6 @@ if __name__ == '__main__':
     epochs = int(args.epochs)
     save = str(args.save)
     workers = int(args.workers)
+    yaml_file = str(yaml)
 
-
-    main(name, logdir, configs, architecture, device, epochs, save, workers)
+    main(name, logdir, configs, architecture, device, epochs, save, workers, yaml_file)

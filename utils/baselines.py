@@ -17,7 +17,7 @@ from utils.sinkhorn_graph import SinkhornGAT
 class GIN_Baseline(nn.Module):
     def __init__(self, data_module, n_hidden_channels, n_graph_layers, n_graph_dropout, n_linear_layers, n_linear_dropout, **kwargs):
         super(GIN_Baseline, self).__init__()
-        self.gin = GIN(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout)
+        self.gin = GIN(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout, **kwargs)
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
@@ -36,7 +36,7 @@ class GIN_Baseline(nn.Module):
 class GAT_Baseline(nn.Module):
     def __init__(self, data_module, n_hidden_channels, n_graph_layers, n_graph_dropout, n_linear_layers, n_linear_dropout, **kwargs):
         super(GAT_Baseline, self).__init__()
-        self.gat = GAT(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout)
+        self.gat = GAT(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout, **kwargs)
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
@@ -74,7 +74,7 @@ class Sinkhorn_Baseline(nn.Module):
 class GINGAT_Baseline(nn.Module):
     def __init__(self, data_module, n_hidden_channels, n_graph_layers, n_graph_dropout, n_linear_layers, n_linear_dropout, **kwargs):
         super(GINGAT_Baseline, self).__init__()
-        self.gingat = GINGAT(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout)
+        self.gingat = GINGAT(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout, **kwargs)
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
@@ -93,7 +93,7 @@ class GINGAT_Baseline(nn.Module):
 class OneHotGraph_Baseline(nn.Module):
     def __init__(self, data_module, n_hidden_channels, n_graph_layers, n_graph_dropout, n_linear_layers, n_linear_dropout, **kwargs):
         super(OneHotGraph_Baseline, self).__init__()
-        self.ohg = OneHotGraph(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout)
+        self.ohg = OneHotGraph(data_module.num_node_features, n_hidden_channels, n_graph_layers, dropout=n_graph_dropout, **kwargs)
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 

@@ -15,21 +15,32 @@ import torch
 from torch import nn, Tensor
 from torch_geometric import nn as gnn
 import torch.nn.functional as F
+from  torch.nn import Conv1d 
 
 from utils.basic_modules import BasicGNN
 
 import torch_scatter
-import torch_sparse
 import torch_geometric
 
 
 
 class OneHotConv(nn.Module):
 
-    def __init__(self, in_channels: Union[int, Tuple[int, int]],
-                 out_channels: int, heads: int = 1, concat: bool = True,
-                 negative_slope: float = 0.2, dropout: float = 0.0,
-                 add_self_loops: bool = True, bias: bool = True, **kwargs):
+    def __init__(
+        self, 
+        in_channels: Union[int, Tuple[int, int]],
+        out_channels: int, 
+        heads: int = 1, 
+        concat: bool = True,
+        negative_slope: float = 0.2, 
+        dropout: float = 0.0,
+        add_self_loops: bool = True, 
+        bias: bool = True,
+        one_hot_attention: bool = False,
+        one_hot_mode: str = "conv",
+        one_hot_channels: int = 8,
+        **kwargs
+        ):
 
         super(OneHotConv, self).__init__()
 
@@ -40,11 +51,25 @@ class OneHotConv(nn.Module):
         self.negative_slope = negative_slope
         self.dropout = dropout
         self.add_self_loops = add_self_loops
+        self.one_hot_attention = one_hot_attention
+        self.one_hot_mode = one_hot_mode
+        self.one_hot_cannels = one_hot_channels
 
-        self.lin = nn.Linear(in_channels, heads * out_channels, bias=False)
+        self.lin = nn.Linear(in_channels + one_hot_channels, heads * out_channels, bias=False)
 
         self.att_l = nn.Parameter(torch.Tensor(1, heads, out_channels))
         self.att_r = nn.Parameter(torch.Tensor(1, heads, out_channels))
+
+        if self.one_hot_mode == "conv":
+            self.onehot_pipe = nn.Sequential(#This is very arbitrary
+                nn.Conv1d(1, 8, 3, padding=1),
+                nn.ReLU(),
+                nn.Conv1d(8, 16, 3, padding=1),
+                nn.ReLU(),
+                nn.AdaptiveAvgPool1d(1),
+                nn.Flatten(),
+                nn.Linear(16, one_hot_channels)
+            )
 
         if bias and concat:
             self.bias = nn.Parameter(torch.Tensor(heads * out_channels))
@@ -83,16 +108,22 @@ class OneHotConv(nn.Module):
         adjs: List[Tensor], 
         size: Size = None
         ):
-
-        H, C = self.heads, self.out_channels
-
-        alpha_l: OptTensor = None
-        alpha_r: OptTensor = None
         
-        x = self.lin(x).view(-1, H, C)
-        alpha_l = (x * self.att_l).sum(dim=-1)
-        alpha_r = (x * self.att_r).sum(dim=-1)
+        #Onehot Action
+        if self.one_hot_mode == "conv":
+            onethot_res = []
+            for onehot in onehots:
+                onehot, _ = onehot.sort(dim = -1)
 
+                onethot_res.append(self.onehot_pipe(onehot.unsqueeze(1)))
+            onethot_res = torch.vstack(onethot_res)
+
+            x = torch.hstack((x, onethot_res))
+
+        x = self.lin(x).view(-1, self.heads, self.out_channels)
+
+        sending_alphas = (x * self.att_l).sum(dim=-1)
+        receiving_alpha = (x * self.att_r).sum(dim=-1)
 
         if self.add_self_loops:
             num_nodes = n_sample_nodes.sum()
@@ -110,13 +141,14 @@ class OneHotConv(nn.Module):
                 adjs[idx] = adj
 
 
-        # propagate_type: (x: OptPairTensor, alpha: OptPairTensor)
+
+
         x, onehots = self.propagate(
             index = edge_index, 
             onehots = onehots, 
             sample_indices = batch_sample_indices, 
             x = x, 
-            alphas = (alpha_l, alpha_r), 
+            alphas = (sending_alphas, receiving_alpha), 
             size = size,
             n_sample_nodes = n_sample_nodes,
             adjs = adjs
@@ -142,7 +174,7 @@ class OneHotConv(nn.Module):
         selected_onehots = self.index_select_onehots(onehots, adjs)
         selected_x = x.index_select(0, sending_indices)
         sending_alphas = sending_alphas.index_select(0, sending_indices)
-        receiving_alphas = receiving_alphas.index_select(0, sending_indices)#maybe wrong?
+        receiving_alphas = receiving_alphas.index_select(0, receiving_indices)
 
         weighted_selected_x, weighted_selected_onethots = self.message(
             selected_x = selected_x, 
@@ -164,7 +196,8 @@ class OneHotConv(nn.Module):
 
         new_x, new_onehots = self.update(
             aggregated_selected_x,
-            aggregated_selected_onehots
+            aggregated_selected_onehots,
+            onehots
         )
 
         return new_x, new_onehots
@@ -189,17 +222,20 @@ class OneHotConv(nn.Module):
 
         weighted_selected_x = selected_x * alpha.unsqueeze(-1)
 
-        cumsumed_n_sample_nodes = torch.tensor([len(l) for l in selected_onehots], device = selected_x.device).cumsum(0)
-        weighted_selected_onehots = []
-        for idx in range(len(selected_onehots)):
-            if idx == 0:
-                idx0 = 0
-            else:
-                idx0 = cumsumed_n_sample_nodes[idx - 1]
-            idx1 = cumsumed_n_sample_nodes[idx]
-            weighted_selected_onehots.append(selected_onehots[idx] * alpha[idx0: idx1])
+        if self.one_hot_attention:
+            cumsumed_n_sample_nodes = torch.tensor([len(l) for l in selected_onehots], device = selected_x.device).cumsum(0)
+            weighted_selected_onehots = []
+            for idx in range(len(selected_onehots)):
+                if idx == 0:
+                    idx0 = 0
+                else:
+                    idx0 = cumsumed_n_sample_nodes[idx - 1]
+                idx1 = cumsumed_n_sample_nodes[idx]
+                weighted_selected_onehots.append(selected_onehots[idx] * alpha[idx0: idx1])
 
-        return weighted_selected_x, weighted_selected_onehots
+            return weighted_selected_x, weighted_selected_onehots
+        
+        return weighted_selected_x, selected_onehots
 
     def aggregate(
         self,
@@ -218,11 +254,18 @@ class OneHotConv(nn.Module):
 
         return aggregated_selected_x, aggregated_selected_onehots
 
-    def update(self, aggregated_selected_x: Tensor, aggregated_selected_onehots: List[Tensor]) -> Tensor:
+    def update(
+        self, 
+        aggregated_selected_x: Tensor, 
+        aggregated_selected_onehots: List[Tensor],
+        onehots: List[Tensor]
+        ) -> Tensor:
 
-        return aggregated_selected_x, aggregated_selected_onehots
+        new_onehots = []
+        for idx in range(len(aggregated_selected_onehots)):
+            new_onehots.append(aggregated_selected_onehots[idx] + onehots[idx])
 
-
+        return aggregated_selected_x, new_onehots
 
 
 

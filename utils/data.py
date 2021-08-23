@@ -309,7 +309,7 @@ class DataModule():
 
 
     def make_train_loader(self, batch_size = 64):
-        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=False, num_workers = self.workers, collate_fn = collate_fn)
+        return DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True, num_workers = self.workers, collate_fn = collate_fn)
     
     def make_test_loader(self):
         return DataLoader(self.test_dataset, batch_size=64, shuffle=False, num_workers = self.workers, collate_fn = collate_fn)

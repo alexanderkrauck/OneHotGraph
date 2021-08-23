@@ -29,7 +29,7 @@ def train(
     loader: torch.utils.data.DataLoader, 
     n_classes: int, 
     epoch: int, 
-    logger: SummaryWriter, 
+    logger: SummaryWriter = None, 
     dataset_class_names = None, 
     device = "cpu", 
     use_tqdm = False, 
@@ -54,8 +54,9 @@ def train(
     for minibatch in iterate:
 
         data = minibatch[0]
-        n_sample_nodes = minibatch[1]
-        adjs = minibatch[2]
+        n_sample_nodes = minibatch[1].to(device)
+        adjs = [adj.to(device) for adj in minibatch[2]]
+
 
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
 
@@ -74,7 +75,7 @@ def train(
         loss.backward()
         optimizer.step()
 
-        logger.add_scalar(f"BCR_MultiTask", loss.detach().cpu().numpy(), global_step=loader.batch_size * ( n_minibatches * (epoch - 1) + batch_nr + 1))
+        if logger: logger.add_scalar(f"BCR_MultiTask", loss.detach().cpu().numpy(), global_step=loader.batch_size * ( n_minibatches * (epoch - 1) + batch_nr + 1))
 
         for i in range(n_classes):
             y = data.y[:,i]
@@ -95,9 +96,9 @@ def train(
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
         scores.append(roc_auc_score(indices, probs))
-        logger.add_scalar(f"AUC-ROC/train/{dataset_class_names[i]}", scores[-1], global_step=epoch)
+        if logger: logger.add_scalar(f"AUC-ROC/train/{dataset_class_names[i]}", scores[-1], global_step=epoch)
 
-    logger.add_scalar(f"AUC-ROC/train/Mean_AUC_ROC", np.mean(scores), global_step=epoch)
+    if logger: logger.add_scalar(f"AUC-ROC/train/Mean_AUC_ROC", np.mean(scores), global_step=epoch)
 
 
         
@@ -107,7 +108,7 @@ def test(
     loader: torch.optim.Optimizer, 
     n_classes: int, 
     epoch:int, 
-    logger: SummaryWriter, 
+    logger: SummaryWriter = None, 
     dataset_class_names = None, 
     run_type = "test", 
     device = "cpu", 
@@ -153,18 +154,18 @@ def test(
         probs = np.concatenate(probs)
         score = roc_auc_score(indices, probs)
         metric_dict["AUC_ROC_"+dataset_class_names[i]] = score
-        logger.add_scalar(f"AUC-ROC/{run_type}/{dataset_class_names[i]}", score, global_step=epoch)
+        if logger: logger.add_scalar(f"AUC-ROC/{run_type}/{dataset_class_names[i]}", score, global_step=epoch)
     
     metric_dict["Mean_AUC_ROC"] = np.mean(list(metric_dict.values()))
 
-    logger.add_scalar(f"AUC-ROC/{run_type}/Mean_AUC_ROC", metric_dict["Mean_AUC_ROC"], global_step=epoch)
+    if logger: logger.add_scalar(f"AUC-ROC/{run_type}/Mean_AUC_ROC", metric_dict["Mean_AUC_ROC"], global_step=epoch)
 
     return metric_dict
 
 def train_config(
     model_class,
     data_module,
-    logger: SummaryWriter,
+    logger: SummaryWriter = None,
     hidden_channels = 128,
     head_depth = 3, 
     base_depth = 5, 
@@ -180,6 +181,7 @@ def train_config(
     scheduler_min_lr = 1e-6,
     scheduler_factor = 0.5,
     scheduler_cooldown = 3,
+    heads = 1,
     **kwargs
     ):
 
@@ -190,6 +192,7 @@ def train_config(
         n_graph_dropout = base_dropout, 
         n_linear_layers = head_depth, 
         n_linear_dropout = head_dropout,
+        heads = heads,
         **kwargs
     ).to(device)
 
@@ -300,17 +303,10 @@ def search_configs(
             model_class = model_class,
             data_module = data_module,
             logger = logger,
-            hidden_channels = config["hidden_channels"], 
-            head_depth = config["head_depth"], 
-            base_depth =  config["base_depth"], 
-            base_dropout =  config["base_dropout"], 
-            head_dropout =  config["head_dropout"], 
-            weight_decay= config["weight_decay"],
-            lr =  config["lr"], 
-            batch_size = config["batch_size"],
             device = device,
             epochs = epochs,
             save = save,
+            **config,
             **kwargs
             )
 
@@ -326,6 +322,6 @@ def search_configs(
                 new_metric_dict["hparam/"+curr_metric] = curr_metric_dict[curr_metric]
 
 
-            logger.add_hparams(copied_conf, new_metric_dict, run_name= f"ep{epoch}")
+            if logger: logger.add_hparams(copied_conf, new_metric_dict, run_name= f"ep{epoch}")
             
         print(f"done (took {time() - dt:.2f}s)")
