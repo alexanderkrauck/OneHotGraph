@@ -136,7 +136,8 @@ class AttentionOneHotConv(nn.Module):
             onethot_res = torch.vstack(onethot_res)
 
             x = torch.hstack((x, onethot_res))
-
+            
+        #if I only add the onehotvectors here I doubt that one linear transform will be enough. 
         x = self.lin(x).view(-1, self.heads, self.out_channels)
 
         sending_alphas = (x * self.att_l).sum(dim=-1)
@@ -308,8 +309,8 @@ class IsomporphismOneHotConv(nn.Module):
         self.one_hot_mode = one_hot_mode
         self.one_hot_cannels = one_hot_channels
 
+        self.first_linear = nn.Linear(in_channels + one_hot_channels, out_channels)
         self.mlp = nn.Sequential(
-            nn.Linear(in_channels + one_hot_channels, out_channels),
             nn.BatchNorm1d(out_channels),
             nn.ReLU(inplace=True),
             nn.Linear(out_channels, out_channels),
@@ -389,6 +390,7 @@ class IsomporphismOneHotConv(nn.Module):
 
             x = torch.hstack((x, onethot_res))
         
+        x = self.first_linear(x)
         x = self.mlp(x)
 
 

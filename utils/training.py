@@ -32,7 +32,7 @@ def train(
     logger: SummaryWriter = None, 
     dataset_class_names = None, 
     device = "cpu", 
-    use_tqdm = False, 
+    use_tqdm = False,
     **kwargs):
 
     model.train()
@@ -193,6 +193,7 @@ def train_config(
         n_linear_layers = head_depth, 
         n_linear_dropout = head_dropout,
         heads = heads,
+        logger = logger,
         **kwargs
     ).to(device)
 
@@ -207,6 +208,7 @@ def train_config(
 
     test(model, train_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="train", device = device, **kwargs)
     best_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device, **kwargs)
+    model.epoch_log(epoch = 0)
     best_epoch_dict = {}
 
     best_test_metric_dict = test(model, val_loader, data_module.num_classes, 0, logger, data_module.class_names, run_type="validation", device = device, **kwargs)
@@ -215,7 +217,7 @@ def train_config(
     
         train(model, optimizer, train_loader, data_module.num_classes, epoch, logger, data_module.class_names, device = device, **kwargs)
         metric_dict = test(model, val_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="validation", device = device, **kwargs)
-
+        model.epoch_log(epoch = epoch)
         logger.flush()
             
 
@@ -257,7 +259,7 @@ def dict_product(dicts):
     return (dict(zip(dicts, x)) for x in itertools.product(*dicts.values()))
 
 def search_configs(
-    model_class, 
+    model_class,
     data_module, 
     search_grid, 
     randomly_try_n = -1, 

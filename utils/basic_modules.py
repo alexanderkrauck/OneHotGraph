@@ -7,8 +7,34 @@ __author__ = "Alexander Krauck"
 __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
-from torch import nn
+from typing import Optional, Callable, List
+from torch_geometric.typing import (OptPairTensor, Adj, Size, NoneType)
+
+
+import copy
+
 import torch
+from torch import Tensor
+import torch.nn.functional as F
+from torch.nn import ModuleList, Sequential, Linear, BatchNorm1d, ReLU
+
+from torch_geometric.nn.conv import GCNConv, SAGEConv, GINConv, GATConv
+from torch_geometric.nn.models.jumping_knowledge import JumpingKnowledge
+
+from typing import Union, Tuple, Optional
+
+import torch
+from torch import Tensor
+import torch.nn.functional as F
+from torch.nn import Linear
+from torch import nn
+
+import abc
+
+class AbstractBaseline(abc.ABC, nn.Module):
+    
+    def epoch_log(self, epoch):
+        pass
 
 class MLP(nn.Module):
     def __init__(self, n_layers: int, input_dim: int, hidden_dim: int, output_dim:int, dropout:float, activation, **kwargs):
@@ -43,29 +69,7 @@ class MLP(nn.Module):
     def forward(self, x):
         return torch.sigmoid(self.net(x))
 
-from typing import Optional, Callable, List
-from torch_geometric.typing import Adj
 
-import copy
-
-import torch
-from torch import Tensor
-import torch.nn.functional as F
-from torch.nn import ModuleList, Sequential, Linear, BatchNorm1d, ReLU
-
-from torch_geometric.nn.conv import GCNConv, SAGEConv, GINConv, GATConv
-from torch_geometric.nn.models.jumping_knowledge import JumpingKnowledge
-
-from typing import Union, Tuple, Optional
-from torch_geometric.typing import (OptPairTensor, Adj, Size, NoneType,
-                                    OptTensor)
-
-import torch
-from torch import Tensor
-import torch.nn.functional as F
-from torch.nn import Parameter, Linear
-from torch_sparse import SparseTensor, set_diag
-from torch_geometric.utils import remove_self_loops, add_self_loops
 
 
 class BasicGNN(torch.nn.Module):
