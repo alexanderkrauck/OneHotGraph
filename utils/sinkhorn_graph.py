@@ -156,8 +156,6 @@ class SinkhornGATConv(GATConv):
 
             new_z = sinkhorn(z, do_n_iters=self.do_n_sinkhorn_iters)#TODO: by using sparse matrices it might be much faster
 
-            print(new_z[0].sum(0))
-
             new_z = torch.transpose(z, 0, 2)
 
             alpha = new_z[edge_index_j, edge_index_i]
