@@ -20,13 +20,6 @@ from torch_geometric.typing import (OptTensor)
 
 from utils.basic_modules import BasicGNN
 
-def check_sinkhorn_condition(P_eps, min_thresh, max_thresh, **kwargs):
-    return torch.any(torch.sum(P_eps, dim=1) < min_thresh) \
-            or torch.any(torch.sum(P_eps, dim=1) > max_thresh) \
-            or torch.any(torch.sum(P_eps, dim=0) < min_thresh) \
-            or torch.any(torch.sum(P_eps, dim=0) > max_thresh)
-    
-
 
 
 #https://github.com/btaba/sinkhorn_knopp
@@ -48,16 +41,17 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False,
     if do_n_iters == -1:
         P_eps = P.detach().clone()
 
-    N = P_.shape[0]
+    N = P_.shape[1]
     max_thresh = 1 + threshhold
     min_thresh = 1 - threshhold
 
     # Initialize r and c, the diagonals of D1 and D2
-    r = torch.ones(N, device = device)
-    pdotr = P_.T @ r
+    r = torch.ones((P_.shape[0], N), device = device)
+    
+    pdotr = torch.bmm(torch.transpose(P_, 1, 2), r.unsqueeze(-1)).squeeze(-1)
 
     c = 1 / pdotr
-    pdotc = P_ @ c
+    pdotc = torch.bmm(P_, c.unsqueeze(-1)).squeeze(-1)
 
 
     r = 1 / pdotc
@@ -70,17 +64,19 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False,
 
     while stopping_condition is None:
 
-        c = 1 / (P_.T @ r)
-        r = 1 / (P_ @ c)
+        c = 1 / (torch.bmm(torch.transpose(P_, 1, 2), r.unsqueeze(-1)).squeeze(-1))
+        r = 1 / (torch.bmm(P_, c.unsqueeze(-1)).squeeze(-1))
 
         if do_n_iters == -1:
-            P_eps = ((P_ * c).T * r).T
+            P_eps = P_ * c.unsqueeze(2)
+            P_eps = P_eps * r.unsqueeze(1)
 
-            if not torch.any(torch.sum(P_eps, dim=1) < min_thresh) \
-                or torch.any(torch.sum(P_eps, dim=1) > max_thresh) \
-                or torch.any(torch.sum(P_eps, dim=0) < min_thresh) \
-                or torch.any(torch.sum(P_eps, dim=0) > max_thresh):
+            if not torch.any(torch.sum(P_eps, dim=2) < min_thresh) \
+                or torch.any(torch.sum(P_eps, dim=2) > max_thresh) \
+                or torch.any(torch.sum(P_eps, dim=1) < min_thresh) \
+                or torch.any(torch.sum(P_eps, dim=1) > max_thresh):
                 stopping_condition = "epsilon"
+                break
 
 
 
@@ -96,8 +92,9 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False,
 
 
 
-
-    P = ((P * c).T * r).T
+    P = P * c.unsqueeze(2)
+    P = P * r.unsqueeze(1)
+    #P = torch.transpose(torch.transpose(P * c, 1, 2) * r, 1, 2)
 
     if return_extra:
         return P, r, c, stopping_condition
@@ -152,14 +149,19 @@ class SinkhornGATConv(GATConv):
 
         if self.norm_mode == "sinkhorn" or "both":
             #Sinkhorn Part(This is rather slow) -> TODO: Make it a pytorch-module
-            z = torch.zeros((size_i, size_i), device = alpha.device)
-            z[edge_index_j, edge_index_i] = alpha.squeeze()#maybe switch j and i here?
-            z = z + torch.eye(z.shape[0], device = alpha.device) * 1e-8 #Numerical stabilty
+            z = torch.zeros((size_i, size_i, alpha.shape[1]), device = alpha.device)
+            z[edge_index_j, edge_index_i] = alpha#maybe switch j and i here?
+            z = torch.transpose(z, 0, 2)
+            z = z + torch.eye(size_i, device = alpha.device) * 1e-8 #Numerical stabilty
 
             new_z = sinkhorn(z, do_n_iters=self.do_n_sinkhorn_iters)#TODO: by using sparse matrices it might be much faster
 
+            print(new_z[0].sum(0))
+
+            new_z = torch.transpose(z, 0, 2)
+
             alpha = new_z[edge_index_j, edge_index_i]
-            alpha = alpha.unsqueeze(-1)
+            #alpha = alpha
 
 
         #Dropout after Sinkhorn!
