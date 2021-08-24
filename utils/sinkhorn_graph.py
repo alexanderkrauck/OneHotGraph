@@ -20,9 +20,17 @@ from torch_geometric.typing import (OptTensor)
 
 from utils.basic_modules import BasicGNN
 
+def check_sinkhorn_condition(P_eps, min_thresh, max_thresh, **kwargs):
+    return torch.any(torch.sum(P_eps, dim=1) < min_thresh) \
+            or torch.any(torch.sum(P_eps, dim=1) > max_thresh) \
+            or torch.any(torch.sum(P_eps, dim=0) < min_thresh) \
+            or torch.any(torch.sum(P_eps, dim=0) > max_thresh)
+    
+
+
 
 #https://github.com/btaba/sinkhorn_knopp
-def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False):
+def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False, do_n_iters = -1):
     """Fit the diagonal matrices in Sinkhorn Knopp's algorithm
 
     Parameters
@@ -37,7 +45,8 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False)
 
     device = P.device
     P_ = P.detach().clone()
-    P_eps = P.detach().clone()
+    if do_n_iters == -1:
+        P_eps = P.detach().clone()
 
     N = P_.shape[0]
     max_thresh = 1 + threshhold
@@ -56,15 +65,24 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False)
 
     iterations = 0
     stopping_condition = None
-    while torch.any(torch.sum(P_eps, dim=1) < min_thresh) \
-            or torch.any(torch.sum(P_eps, dim=1) > max_thresh) \
-            or torch.any(torch.sum(P_eps, dim=0) < min_thresh) \
-            or torch.any(torch.sum(P_eps, dim=0) > max_thresh):
+
+    cont = True
+
+    while stopping_condition is None:
 
         c = 1 / (P_.T @ r)
         r = 1 / (P_ @ c)
 
-        P_eps = ((P_ * c).T * r).T
+        if do_n_iters == -1:
+            P_eps = ((P_ * c).T * r).T
+
+            if not torch.any(torch.sum(P_eps, dim=1) < min_thresh) \
+                or torch.any(torch.sum(P_eps, dim=1) > max_thresh) \
+                or torch.any(torch.sum(P_eps, dim=0) < min_thresh) \
+                or torch.any(torch.sum(P_eps, dim=0) > max_thresh):
+                stopping_condition = "epsilon"
+
+
 
         iterations += 1
 
@@ -72,8 +90,11 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False)
             stopping_condition = "max_iter"
             break
 
-    if not stopping_condition:
-        stopping_condition = "epsilon"
+        if iterations == do_n_iters:
+            stopping_condition = "done_n_iter"
+            break
+
+
 
 
     P = ((P * c).T * r).T
@@ -86,14 +107,24 @@ def sinkhorn(P: Tensor, threshhold = 1e-3, max_iter = 100, return_extra = False)
 
 class SinkhornGATConv(GATConv):
 
-    def __init__(self, in_channels: Union[int, Tuple[int, int]],
-                 out_channels: int, heads: int = 1, concat: bool = True,
-                 negative_slope: float = 0.2, dropout: float = 0.0,
-                 add_self_loops: bool = True, bias: bool = True, norm_mode = "sinkhorn", **kwargs):
+    def __init__(
+        self, 
+        in_channels: Union[int, Tuple[int, int]],
+        out_channels: int, 
+        heads: int = 1, 
+        concat: bool = True,
+        negative_slope: float = 0.2, 
+        dropout: float = 0.0,
+        add_self_loops: bool = True, 
+        bias: bool = True, 
+        norm_mode = "sinkhorn", 
+        do_n_sinkhorn_iters = -1,
+        **kwargs):
 
         super(SinkhornGATConv, self).__init__(in_channels, out_channels, heads, concat, negative_slope, dropout, add_self_loops, bias, **kwargs)
 
         self.norm_mode = norm_mode
+        self.do_n_sinkhorn_iters = do_n_sinkhorn_iters
 
 
     def message(self, x_j: Tensor, alpha_j: Tensor, alpha_i: OptTensor,
@@ -125,8 +156,7 @@ class SinkhornGATConv(GATConv):
             z[edge_index_j, edge_index_i] = alpha.squeeze()#maybe switch j and i here?
             z = z + torch.eye(z.shape[0], device = alpha.device) * 1e-8 #Numerical stabilty
 
-            new_z = sinkhorn(z)#TODO: by using sparse matrices it might be much faster
-
+            new_z = sinkhorn(z, do_n_iters=self.do_n_sinkhorn_iters)#TODO: by using sparse matrices it might be much faster
 
             alpha = new_z[edge_index_j, edge_index_i]
             alpha = alpha.unsqueeze(-1)
