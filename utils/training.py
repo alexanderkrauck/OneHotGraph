@@ -9,6 +9,7 @@ __date__ = "21-08-2021"
 
 import itertools
 from time import time
+from typing import List
 import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score
@@ -30,9 +31,9 @@ def train(
     n_classes: int, 
     epoch: int, 
     logger: SummaryWriter = None, 
-    dataset_class_names = None, 
-    device = "cpu", 
-    use_tqdm = False,
+    dataset_class_names: List[str] = None, 
+    device: str = "cpu", 
+    use_tqdm: bool = False,
     **kwargs):
 
     model.train()
@@ -57,18 +58,16 @@ def train(
         n_sample_nodes = minibatch[1].to(device)
         adjs = [adj.to(device) for adj in minibatch[2]]
         xs = [x.to(device) for x in minibatch[3]]
-
-
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
+        y = data.y.to(device)
 
         out = model(x, edge_index, batch, n_sample_nodes = n_sample_nodes, adjs = adjs, xs = xs)
 
-        y = data.y.to(device)
         is_not_nan = ~y.isnan()
         y = torch.nan_to_num(y, 0.5)
 
         try:
-            loss = (F.binary_cross_entropy(out, y, reduction="none") * is_not_nan).mean() #Same as is the DeepTox paper
+            loss = (F.binary_cross_entropy(out, y, reduction="none") * is_not_nan).mean() #Same as is the DeepTox paper (ignore nan preds)
         except RuntimeError:
             print(y, out)
 
@@ -86,7 +85,6 @@ def train(
             rs = out[is_not_nan].detach().cpu().numpy()
             probs = rs[:, i]
         
-            #print(indices.shape, probs1.shape, rs.shape, np.ones_like(indices).shape)
             indices_list[i].append(indices)
             probs_list[i].append(probs)
 
@@ -108,13 +106,14 @@ def test(
     model: torch.nn.Module, 
     loader: torch.optim.Optimizer, 
     n_classes: int, 
-    epoch:int, 
+    epoch: int, 
     logger: SummaryWriter = None, 
-    dataset_class_names = None, 
-    run_type = "test", 
-    device = "cpu", 
-    use_tqdm = False, 
+    dataset_class_names: List[str] = None, 
+    run_type: str = "test", 
+    device: str = "cpu", 
+    use_tqdm: bool = False, 
     **kwargs):
+
     model.eval()
 
     indices_list = [[] for d in range(n_classes)]
@@ -168,11 +167,6 @@ def train_config(
     model_class,
     data_module,
     logger: SummaryWriter = None,
-    hidden_channels = 128,
-    head_depth = 3, 
-    base_depth = 5, 
-    base_dropout = 0.5, 
-    head_dropout = 0.5, 
     lr = 1e-2,
     weight_decay = 1e-8,
     batch_size = 64,
@@ -183,18 +177,11 @@ def train_config(
     scheduler_min_lr = 1e-6,
     scheduler_factor = 0.5,
     scheduler_cooldown = 3,
-    heads = 1,
     **kwargs
     ):
 
     model = model_class(
         data_module = data_module,
-        n_hidden_channels = hidden_channels,
-        n_graph_layers = base_depth, 
-        n_graph_dropout = base_dropout, 
-        n_linear_layers = head_depth, 
-        n_linear_dropout = head_dropout,
-        heads = heads,
         logger = logger,
         **kwargs
     ).to(device)
@@ -202,7 +189,14 @@ def train_config(
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "max", factor = scheduler_factor, patience=scheduler_patience, cooldown=scheduler_cooldown, min_lr=scheduler_min_lr)
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer = optimizer, 
+        mode = "max", 
+        factor = scheduler_factor, 
+        patience=scheduler_patience, 
+        cooldown=scheduler_cooldown, 
+        min_lr=scheduler_min_lr
+        )
 
     train_loader = data_module.make_train_loader(batch_size = batch_size)
     val_loader = data_module.make_val_loader()
