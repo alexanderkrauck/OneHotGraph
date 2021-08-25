@@ -287,6 +287,7 @@ class IsomporphismOneHotConv(nn.Module):
         dropout: float = 0.0,
         one_hot_mode: str = "conv",
         one_hot_channels: int = 8,
+        first_n_one_hot: int = 16,
         **kwargs
         ):
 
@@ -300,6 +301,7 @@ class IsomporphismOneHotConv(nn.Module):
         self.dropout = dropout
         self.one_hot_mode = one_hot_mode
         self.one_hot_cannels = one_hot_channels
+        self.first_n_one_hot = first_n_one_hot
 
         self.first_linear = nn.Linear(in_channels + one_hot_channels, out_channels)
         self.mlp = nn.Sequential(
@@ -307,6 +309,8 @@ class IsomporphismOneHotConv(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(out_channels, out_channels),
         )
+
+        self.info_act = Symlog()
 
         if self.one_hot_mode == "conv":
             self.onehot_pipe = nn.Sequential(#This is very arbitrary
@@ -317,6 +321,14 @@ class IsomporphismOneHotConv(nn.Module):
                 nn.AdaptiveAvgPool1d(1),
                 nn.Flatten(),
                 nn.Linear(16, one_hot_channels)
+            )
+
+        if self.one_hot_mode == "ffn":
+            self.onehot_pipe = nn.Sequential(
+                nn.Linear(first_n_one_hot, 64),
+                nn.BatchNorm1d(64),
+                nn.ReLU(inplace=True),
+                nn.Linear(64, one_hot_channels)
             )
 
         self.reset_parameters()
@@ -364,8 +376,6 @@ class IsomporphismOneHotConv(nn.Module):
         #Onehot Convolution (mine)
         for x, adj, onehot, n_nodes in zip(xs, adjs, onehots, n_sample_nodes):
 
-
-
             x, onehot = self.propagate(
                 x, 
                 onehot,
@@ -375,8 +385,17 @@ class IsomporphismOneHotConv(nn.Module):
 
             if self.one_hot_mode == "conv":
                 #Unsqueezing the channel dimension for convs
-                readout_onehot = self.onehot_pipe(onehot.sort(dim = -1)[0].unsqueeze(1))#sort such that the pattern is invariant TODO:  + symlog act here!
-                x = torch.hstack((x, readout_onehot))
+                prepared_onehot = self.info_act(onehot.sort(dim = -1)[0].unsqueeze(1))
+
+            if self.one_hot_mode == "ffn":
+                prepared_onehot = self.info_act(onehot.sort(dim = -1, descending=True)[0])
+                if prepared_onehot.shape[1] >= self.first_n_one_hot:
+                    prepared_onehot = prepared_onehot[:, :self.first_n_one_hot]
+                else:
+                    prepared_onehot = torch.hstack((prepared_onehot, torch.zeros((n_nodes, self.first_n_one_hot - prepared_onehot.shape[1]), device = prepared_onehot.device)))
+
+            prepared_onehot = self.onehot_pipe(prepared_onehot)
+            x = torch.hstack((x, prepared_onehot))
             
             x = self.first_linear(x)
             x = self.mlp(x)
