@@ -321,11 +321,12 @@ def collate_fn(batch):
 
     lens = torch.tensor([len(b.x) for b in batch])
     adjs = [b.edge_index for b in batch]
+    xs = [b.x for b in batch]
 
     col = Collater([], [])
     merged_data = col(batch)
 
-    return merged_data, lens, adjs
+    return merged_data, lens, adjs, xs
 
 
 

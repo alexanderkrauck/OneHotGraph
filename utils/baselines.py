@@ -13,7 +13,7 @@ from torch import nn
 from utils.basic_modules import GIN, MLP, GAT, GINGAT, AbstractBaseline
 from torch_geometric import nn as gnn
 from utils.sinkhorn_graph import SinkhornGAT
-
+import torch
 
 
 class GIN_Baseline(AbstractBaseline):
@@ -107,12 +107,12 @@ class AttentionOneHotGraph_Baseline(AbstractBaseline):
         
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
-    def forward(self, x, edge_index, batch_sample_indices, n_sample_nodes, adjs, **kwargs):
+    def forward(self, x, edge_index, batch_sample_indices, n_sample_nodes, adjs, xs, **kwargs):
         # 1. Obtain node embeddings 
-        x = self.ohg(x, edge_index, batch_sample_indices, n_sample_nodes, adjs)
+        xs = self.ohg(x, edge_index, batch_sample_indices, n_sample_nodes, adjs, xs)
 
         # 2. Readout layer
-        x = gnn.global_mean_pool(x, batch_sample_indices)  # [batch_size, hidden_channels]
+        x = torch.cat([torch.mean(x, dim=0).unsqueeze(0) for x in xs], dim=0) # = global mean pool -> to minibatched tensor
 
         # 3. Apply a final classifier
         x =  self.head(x)
@@ -137,12 +137,12 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
         self.logger = logger
         self.head = MLP(n_linear_layers, n_hidden_channels, n_hidden_channels, data_module.num_classes, n_linear_dropout, nn.ReLU())
 
-    def forward(self, x, edge_index, batch_sample_indices, n_sample_nodes, adjs, **kwargs):
+    def forward(self, x, edge_index, batch_sample_indices, n_sample_nodes, adjs, xs, **kwargs):
         # 1. Obtain node embeddings 
-        x = self.ohg(x, edge_index, batch_sample_indices, n_sample_nodes, adjs)
+        xs = self.ohg(x, edge_index, batch_sample_indices, n_sample_nodes, adjs, xs)
 
         # 2. Readout layer
-        x = gnn.global_mean_pool(x, batch_sample_indices)  # [batch_size, hidden_channels]
+        x = torch.cat([torch.mean(x, dim=0).unsqueeze(0) for x in xs], dim=0) # [batch_size, hidden_channels]
 
         # 3. Apply a final classifier
         x =  self.head(x)

@@ -365,3 +365,28 @@ class GINGAT(BasicGNN):
             ReLU(inplace=True),
             Linear(out_channels, out_channels),
         )
+
+class Symlog(nn.Module):
+
+    def __init__(self, inplace = False):
+        super().__init__()
+        self.inplace = inplace
+
+    def forward(self, x):
+        is_neg = x < -1
+        is_pos = x > 1
+        
+        if self.inplace:
+            x[is_neg] = -torch.log(-x[is_neg]) - 1
+            x[is_pos] = torch.log(x[is_pos]) + 1
+            return x
+        else:
+            x_ = torch.empty_like(x)
+            is_mid = abs(x) < 1
+
+            x_[is_neg] = -torch.log(-x[is_neg]) - 1
+            x_[is_pos] = torch.log(x[is_pos]) + 1
+            x_[is_mid] = x[is_mid]
+
+            return x_
+

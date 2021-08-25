@@ -56,11 +56,12 @@ def train(
         data = minibatch[0]
         n_sample_nodes = minibatch[1].to(device)
         adjs = [adj.to(device) for adj in minibatch[2]]
+        xs = [x.to(device) for x in minibatch[3]]
 
 
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
 
-        out = model(x, edge_index, batch, n_sample_nodes = n_sample_nodes, adjs = adjs)
+        out = model(x, edge_index, batch, n_sample_nodes = n_sample_nodes, adjs = adjs, xs = xs)
 
         y = data.y.to(device)
         is_not_nan = ~y.isnan()
@@ -132,10 +133,11 @@ def test(
         data = minibatch[0]
         n_sample_nodes = minibatch[1].to(device)
         adjs = [adj.to(device) for adj in minibatch[2]]
+        xs = [x.to(device) for x in minibatch[3]]
 
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
 
-        out = model(x, edge_index, batch, n_sample_nodes = n_sample_nodes, adjs = adjs)
+        out = model(x, edge_index, batch, n_sample_nodes = n_sample_nodes, adjs = adjs, xs = xs)
         for i in range(n_classes):
             y = data.y[:,i]
             is_not_nan = ~y.isnan()
@@ -231,7 +233,7 @@ def train_config(
         #Evaluate on test-set to obtain the true unbiased estimate
         if len(better_in) != 0:
             test_metric_dict = test(model, test_loader, data_module.num_classes, epoch, logger, data_module.class_names, run_type="test", device = device, **kwargs)
-            
+            test_metric_dict["VAL_Mean_AUC_ROC"] = metric_dict["Mean_AUC_ROC"]
             for metric in better_in:
 
                 best_test_metric_dict[metric] = test_metric_dict
