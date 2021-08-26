@@ -28,7 +28,7 @@ class AttentionOneHotConv(nn.Module):
 
     def __init__(
         self, 
-        in_channels: Union[int, Tuple[int, int]],
+        in_channels: int,
         out_channels: int, 
         heads: int = 1, 
         concat: bool = True,
@@ -36,11 +36,48 @@ class AttentionOneHotConv(nn.Module):
         dropout: float = 0.0,
         add_self_loops: bool = True, 
         bias: bool = True,
-        one_hot_attention: bool = False,
+        one_hot_attention: str = "dot",
         one_hot_mode: str = "conv",
+        one_hot_incay: str = "add",
         one_hot_channels: int = 8,
+        first_n_one_hot: int = 10,
         **kwargs
         ):
+        """
+        
+        Parameters
+        ----------
+        in_channels: int
+            The number of incoming channels for each node
+        out_channels: int
+            The number of outcoming channels for each node
+        heads: int
+            The number of attention heads that are being used
+        concat: bool
+            Whether the heads should be concatenated #TODO: look this up
+        negative_slope: float
+            The negative slope for the LeakyReLU activation used for the node-attetion
+        dropout: float
+            The dropout probability for the attention weights
+        add_self_loops: bool
+            Whether or not to add self loops for each node
+        bias: bool
+            Whether or not to use bias weights for the final computation of the next hidden states
+        one_hot_attention: str
+            Which attention function to use between the one hot weights.
+            Possible are "dot", "none" and "uoi" (Union over Intersection, which is the inverse of the Jaccard metric or the Intersection over Union)
+        one_hot_mode: str
+            Which type function to use for computing the one hot channels which are added to the hidden state of the nodes and used for further computations
+        one_hot_incay: str
+            How to increase the one-hot-vector with each message passing.
+            Possible are "add" which fully adds, "binary_add" which adds 1 to each index if the neighbor has not zero there
+            and "indicator" which does not increase but only indicates with 1 if the node has seen this neighbors information
+        one_hot_channels: int
+            The number of channels to use for computing the one hot vecor which is added to the hidden vector of each node.
+        first_n_one_hot: int
+            The number of fist nodes that are used to feed into the ffnn to compute the one-hot vecor which is concatenated to the hidden vector of each node.
+            This is only relevant if the one_hot_mode = "ffn"
+        """
 
         super(AttentionOneHotConv, self).__init__()
 
@@ -54,13 +91,15 @@ class AttentionOneHotConv(nn.Module):
         self.one_hot_attention = one_hot_attention
         self.one_hot_mode = one_hot_mode
         self.one_hot_cannels = one_hot_channels
+        self.one_hot_incay = one_hot_incay
+        self.first_n_one_hot = first_n_one_hot
 
         self.lin = nn.Linear(in_channels + one_hot_channels, heads * out_channels, bias=False)
 
         self.att_l = nn.Parameter(torch.Tensor(1, heads, out_channels))
         self.att_r = nn.Parameter(torch.Tensor(1, heads, out_channels))
 
-        self.pre_dot_act = Symlog()
+        self.pre_att_act = Symlog()
         self.pre_info_act = Symlog()
 
         if self.one_hot_mode == "conv":
@@ -72,6 +111,14 @@ class AttentionOneHotConv(nn.Module):
                 nn.AdaptiveAvgPool1d(1),
                 nn.Flatten(),
                 nn.Linear(16, one_hot_channels)
+            )
+
+        if self.one_hot_mode == "ffn":
+            self.onehot_pipe = nn.Sequential(
+                nn.Linear(first_n_one_hot, 64),
+                nn.BatchNorm1d(64),
+                nn.ReLU(inplace=True),
+                nn.Linear(64, one_hot_channels)
             )
 
         if bias and concat:
@@ -136,6 +183,12 @@ class AttentionOneHotConv(nn.Module):
                 prepared_onehots = self.pre_info_act(onehot.sort(dim = -1)[0].unsqueeze(1))
                 readout_onehot = self.onehot_pipe(prepared_onehots)#sort such that the pattern is invariant TODO:  + symlog act here!
                 x = torch.hstack((x, readout_onehot))
+            if self.one_hot_mode == "ffn":
+                prepared_onehot = self.info_act(onehot.sort(dim = -1, descending=True)[0])
+                if prepared_onehot.shape[1] >= self.first_n_one_hot:
+                    prepared_onehot = prepared_onehot[:, :self.first_n_one_hot]
+                else:
+                    prepared_onehot = torch.hstack((prepared_onehot, torch.zeros((n_nodes, self.first_n_one_hot - prepared_onehot.shape[1]), device = prepared_onehot.device)))
 
 
 
@@ -234,18 +287,26 @@ class AttentionOneHotConv(nn.Module):
         alpha = F.leaky_relu(alpha, self.negative_slope)
 
 
+        if self.one_hot_attention != "none":
 
-        if self.one_hot_attention:#maybe symlog activation before
-            onehot_dot_attention = 1 / (torch.sum(self.pre_dot_act(sending_onehots) * self.pre_dot_act(receiving_onehots), dim=1) + 1)#+1 for zeros
+            sending = self.pre_att_act(sending_onehots)
+            receiving = self.pre_att_act(receiving_onehots)
 
+            if self.one_hot_attention == "dot":
+                onehot_dot_attention = 1 / (torch.sum(sending * receiving, dim=1) + 1)#+1 for zeros
+            
+            if self.one_hot_attention == "uoi" or self.one_hot_attention == "union_over_intersection":#=inverse tanimoto=inverse intersection over union = inverse jaccard
+                onehot_dot_attention = torch.sum(torch.maximum(sending, receiving), dim=-1) / (torch.sum(torch.minimum(sending, receiving),dim=-1) + 1)#+1 for zeros
+        
             alpha = alpha * onehot_dot_attention
-
         
         alpha = torch_geometric.utils.softmax(alpha, receiving_indices)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
         weighted_selected_x = sending_x * alpha.unsqueeze(-1)
 
+        if self.one_hot_incay == "binary_add":
+            sending_onehots = sending_onehots != 0
         
         return weighted_selected_x, sending_onehots
 
@@ -272,8 +333,12 @@ class AttentionOneHotConv(nn.Module):
         **kwargs
         ) -> Tuple[Tensor, List[Tensor]]:
 
+        if self.one_hot_incay == "indicator":
+            new_one_hots = (aggregated_selected_onehots + onehots) != 0
+        else:
+            new_one_hots = aggregated_selected_onehots + onehots
 
-        return aggregated_selected_x, aggregated_selected_onehots + onehots
+        return aggregated_selected_x, new_one_hots
 
 class IsomporphismOneHotConv(nn.Module):
 

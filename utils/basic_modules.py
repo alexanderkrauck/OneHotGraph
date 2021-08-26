@@ -368,24 +368,25 @@ class GINGAT(BasicGNN):
 
 class Symlog(nn.Module):
 
-    def __init__(self, inplace = False):
+    def __init__(self, inplace = False, base = torch.tensor(2.71828182845904523536028747135266249775724709369995)):
         super().__init__()
         self.inplace = inplace
+        self.logbase = nn.Parameter(torch.log(base), requires_grad=False)#maybe grad?
 
     def forward(self, x):
         is_neg = x < -1
         is_pos = x > 1
         
         if self.inplace:
-            x[is_neg] = -torch.log(-x[is_neg]) - 1
-            x[is_pos] = torch.log(x[is_pos]) + 1
+            x[is_neg] = -(torch.log(-x[is_neg])/self.logbase) - 1
+            x[is_pos] = (torch.log(x[is_pos])/self.logbase) + 1
             return x
         else:
             x_ = torch.empty_like(x)
             is_mid = abs(x) < 1
 
-            x_[is_neg] = -torch.log(-x[is_neg]) - 1
-            x_[is_pos] = torch.log(x[is_pos]) + 1
+            x_[is_neg] = -(torch.log(-x[is_neg])/self.logbase) - 1
+            x_[is_pos] = (torch.log(x[is_pos])/self.logbase) + 1
             x_[is_mid] = x[is_mid]
 
             return x_
