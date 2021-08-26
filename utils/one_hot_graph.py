@@ -68,7 +68,7 @@ class AttentionOneHotConv(nn.Module):
             Possible are "dot", "none" and "uoi" (Union over Intersection, which is the inverse of the Jaccard metric or the Intersection over Union)
         one_hot_mode: str
             Which type function to use for computing the one hot channels which are added to the hidden state of the nodes and used for further computations.
-            Possible are "conv" and "ffn".
+            Possible are "conv", "none" and "ffn".
         one_hot_incay: str
             How to increase the one-hot-vector with each message passing.
             Possible are "add" which fully adds, "binary_add" which adds 1 to each index if the neighbor has not zero there
@@ -91,9 +91,13 @@ class AttentionOneHotConv(nn.Module):
         self.add_self_loops = add_self_loops
         self.one_hot_attention = one_hot_attention
         self.one_hot_mode = one_hot_mode
-        self.one_hot_cannels = one_hot_channels
         self.one_hot_incay = one_hot_incay
         self.first_n_one_hot = first_n_one_hot
+
+        if one_hot_mode == "none":
+            one_hot_channels = 0
+
+        self.one_hot_cannels = one_hot_channels
 
         self.lin = nn.Linear(in_channels + one_hot_channels, heads * out_channels, bias=False)
 
@@ -180,18 +184,18 @@ class AttentionOneHotConv(nn.Module):
         for x, adj, onehot, n_nodes in zip(xs, adjs, onehots, n_sample_nodes):
 
             if self.one_hot_mode == "conv":
-                #Unsqueezing the channel dimension for convs
-                prepared_onehots = self.pre_info_act(onehot.sort(dim = -1)[0].unsqueeze(1))
-                readout_onehot = self.onehot_pipe(prepared_onehots)#sort such that the pattern is invariant TODO:  + symlog act here!
-                x = torch.hstack((x, readout_onehot))
+                prepared_onehot = self.pre_info_act(onehot.sort(dim = -1)[0].unsqueeze(1))
+
             if self.one_hot_mode == "ffn":
-                prepared_onehot = self.info_act(onehot.sort(dim = -1, descending=True)[0])
+                prepared_onehot = self.pre_info_act(onehot.sort(dim = -1, descending=True)[0])
                 if prepared_onehot.shape[1] >= self.first_n_one_hot:
                     prepared_onehot = prepared_onehot[:, :self.first_n_one_hot]
                 else:
                     prepared_onehot = torch.hstack((prepared_onehot, torch.zeros((n_nodes, self.first_n_one_hot - prepared_onehot.shape[1]), device = prepared_onehot.device)))
 
-
+            if self.one_hot_mode != "none":
+                prepared_onehot = self.onehot_pipe(prepared_onehot)
+                x = torch.hstack((x, prepared_onehot))
 
             #if I only add the onehotvectors here I doubt that one linear transform will be enough. 
             x = self.lin(x).view(-1, self.heads, self.out_channels)

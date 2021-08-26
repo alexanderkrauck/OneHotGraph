@@ -57,7 +57,7 @@ def train(
         data = minibatch[0]
         n_sample_nodes = minibatch[1].to(device)
         adjs = [adj.to(device) for adj in minibatch[2]]
-        xs = [x.to(device) for x in minibatch[3]]
+        xs = [x.float().to(device) for x in minibatch[3]]
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
         y = data.y.to(device)
 
@@ -132,7 +132,7 @@ def test(
         data = minibatch[0]
         n_sample_nodes = minibatch[1].to(device)
         adjs = [adj.to(device) for adj in minibatch[2]]
-        xs = [x.to(device) for x in minibatch[3]]
+        xs = [x.float().to(device) for x in minibatch[3]]
 
         x, edge_index, batch = data.x.float().to(device), data.edge_index.to(device), data.batch.to(device)
 
