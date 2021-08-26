@@ -272,7 +272,7 @@ def grid_search_configs(
     if randomly_try_n == -1:
         randomly_try_n = len(configurations)
     
-    print(f"Number of configurations now being trained {len(randomly_try_n)}")
+    print(f"Number of configurations now being trained {randomly_try_n}")
     print("--------------------------------------------------------------------------------------------\n")
     
     tried = 0
