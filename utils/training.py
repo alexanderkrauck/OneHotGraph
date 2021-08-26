@@ -271,15 +271,12 @@ def grid_search_configs(
 
     if randomly_try_n == -1:
         randomly_try_n = len(configurations)
-        do_indices = range(len(configurations))
-    else:
-        do_indices = np.random.choice(len(configurations), size=randomly_try_n)
     
-    print(f"Number of configurations now being trained {len(do_indices)}")
+    print(f"Number of configurations now being trained {len(randomly_try_n)}")
     print("--------------------------------------------------------------------------------------------\n")
     
     tried = 0
-    while randomly_try_n > tried:
+    while randomly_try_n > tried and len(configurations) != 0:
 
         tried += 1
 
