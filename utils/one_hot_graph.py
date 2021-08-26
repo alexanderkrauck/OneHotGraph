@@ -299,7 +299,7 @@ class AttentionOneHotConv(nn.Module):
             if self.one_hot_attention == "uoi" or self.one_hot_attention == "union_over_intersection":#=inverse tanimoto=inverse intersection over union = inverse jaccard
                 onehot_dot_attention = torch.sum(torch.maximum(sending, receiving), dim=-1) / (torch.sum(torch.minimum(sending, receiving),dim=-1) + 1)#+1 for zeros
         
-            alpha = alpha * onehot_dot_attention
+            alpha = alpha * onehot_dot_attention.unsqueeze(-1)
         
         alpha = torch_geometric.utils.softmax(alpha, receiving_indices)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
@@ -540,8 +540,6 @@ class IsomporphismOneHotConv(nn.Module):
         ) -> Tuple[Tensor, List[Tensor]]:
 
         return aggregated_selected_x, onehots + aggregated_selected_onehots
-
-
 
 class OneHotGraph(nn.Module):
 
