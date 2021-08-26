@@ -67,7 +67,8 @@ class AttentionOneHotConv(nn.Module):
             Which attention function to use between the one hot weights.
             Possible are "dot", "none" and "uoi" (Union over Intersection, which is the inverse of the Jaccard metric or the Intersection over Union)
         one_hot_mode: str
-            Which type function to use for computing the one hot channels which are added to the hidden state of the nodes and used for further computations
+            Which type function to use for computing the one hot channels which are added to the hidden state of the nodes and used for further computations.
+            Possible are "conv" and "ffn".
         one_hot_incay: str
             How to increase the one-hot-vector with each message passing.
             Possible are "add" which fully adds, "binary_add" which adds 1 to each index if the neighbor has not zero there
