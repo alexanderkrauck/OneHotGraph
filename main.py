@@ -78,7 +78,7 @@ def main(
         else:
             ldir = logdir + "/" + name
         
-        training.search_configs(
+        training.grid_search_configs(
             model_class, 
             data_module, 
             search_grid, 
@@ -95,15 +95,15 @@ if __name__ == '__main__':
 
 
     parser = ArgumentParser()
-    parser.add_argument("-n", "--name", help="Name of the experiment", default=f"*time*")
+    parser.add_argument("-n", "--name", help="Name of the experiment", default=f"iohg_run13")
     parser.add_argument("-l", "--logdir", help="Directories where logs are stored", default=f"runs")
     parser.add_argument("-c", "--configs", help="Number of configs to try", default=5)
     parser.add_argument("-a", "--architecture", help="The architecture of choice", default="iohg")
     parser.add_argument("-d", "--device", help="The device of choice", default="cpu")
-    parser.add_argument("-e", "--epochs", help="The number of epochs to run for each config", default=100)
+    parser.add_argument("-e", "--epochs", help="The number of epochs to run for each config", default=10)
     parser.add_argument("-s", "--save", help="The save mode", default="best")
     parser.add_argument("-w", "--workers", help="The number of workers the dataloaders use", default=2)
-    parser.add_argument("-y", "--yaml", help="The yaml file with the search grid", default = "")
+    parser.add_argument("-y", "--yaml", help="The yaml file with the search grid", default = "grids/grid_iohg.yml")
 
 
 
