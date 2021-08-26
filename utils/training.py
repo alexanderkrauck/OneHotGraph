@@ -254,15 +254,12 @@ def dict_product(dicts):
 
     return (dict(zip(dicts, x)) for x in itertools.product(*dicts.values()))
 
-def search_configs(
+def grid_search_configs(
     model_class,
     data_module, 
     search_grid, 
     randomly_try_n = -1, 
     logdir = "runs", 
-    device = "cpu", 
-    epochs = 100,
-    save: str = "best",
     **kwargs):
 
     configurations = [config for config in dict_product(search_grid)]
@@ -281,7 +278,7 @@ def search_configs(
     print("--------------------------------------------------------------------------------------------\n")
     
     tried = 0
-    while randomly_try_n > tried:
+    while randomly_try_n > tried or (randomly_try_n == -1 and len(configurations != 0)):
 
         tried += 1
 
@@ -301,9 +298,6 @@ def search_configs(
             model_class = model_class,
             data_module = data_module,
             logger = logger,
-            device = device,
-            epochs = epochs,
-            save = save,
             **config,
             **kwargs
             )
