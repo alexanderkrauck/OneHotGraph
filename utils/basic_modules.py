@@ -1,4 +1,3 @@
-
 """
 Utility classes for basic modules to be used as components
 """
@@ -8,7 +7,7 @@ __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
 from typing import Optional, Callable, List
-from torch_geometric.typing import (OptPairTensor, Adj, Size, NoneType)
+from torch_geometric.typing import OptPairTensor, Adj, Size, NoneType
 
 
 import copy
@@ -31,45 +30,47 @@ from torch import nn
 
 import abc
 
+
 class AbstractBaseline(abc.ABC, nn.Module):
-    
     def epoch_log(self, epoch):
         pass
 
+
 class MLP(nn.Module):
-    def __init__(self, n_layers: int, input_dim: int, hidden_dim: int, output_dim:int, dropout:float, activation, **kwargs):
+    def __init__(
+        self,
+        n_layers: int,
+        input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
+        dropout: float,
+        activation,
+        **kwargs,
+    ):
         super(MLP, self).__init__()
 
         if n_layers == 1:
-            modules = [
-                nn.Dropout(p = dropout),
-                nn.Linear(input_dim, output_dim)
-            ]
+            modules = [nn.Dropout(p=dropout), nn.Linear(input_dim, output_dim)]
         else:
-            modules = [
-                nn.Dropout(p = dropout),
-                nn.Linear(input_dim, hidden_dim)
-            ]
+            modules = [nn.Dropout(p=dropout), nn.Linear(input_dim, hidden_dim)]
 
             for i in range(n_layers - 2):
-                modules.extend([
-                    activation,
-                    nn.Dropout(p = dropout),
-                    nn.Linear(hidden_dim, hidden_dim)
-                ])
-            
-            modules.extend([
-                activation,
-                nn.Dropout(p = dropout),
-                nn.Linear(hidden_dim, output_dim)
-            ])
+                modules.extend(
+                    [
+                        activation,
+                        nn.Dropout(p=dropout),
+                        nn.Linear(hidden_dim, hidden_dim),
+                    ]
+                )
+
+            modules.extend(
+                [activation, nn.Dropout(p=dropout), nn.Linear(hidden_dim, output_dim)]
+            )
 
         self.net = nn.Sequential(*modules)
 
     def forward(self, x):
         return torch.sigmoid(self.net(x))
-
-
 
 
 class BasicGNN(torch.nn.Module):
@@ -88,15 +89,22 @@ class BasicGNN(torch.nn.Module):
             (:obj:`"last"`, :obj:`"cat"`, :obj:`"max"`, :obj:`"last"`).
             (default: :obj:`"last"`)
     """
-    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
-                 dropout: float = 0.0,
-                 act: Optional[Callable] = ReLU(inplace=True),
-                 norm: Optional[torch.nn.Module] = None, jk: str = 'last'):
+
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        num_layers: int,
+        dropout: float = 0.0,
+        act: Optional[Callable] = ReLU(inplace=True),
+        norm: Optional[torch.nn.Module] = None,
+        jk: str = "last",
+    ):
         super().__init__()
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
         self.out_channels = hidden_channels
-        if jk == 'cat':
+        if jk == "cat":
             self.out_channels = num_layers * hidden_channels
         self.num_layers = num_layers
         self.dropout = dropout
@@ -105,13 +113,12 @@ class BasicGNN(torch.nn.Module):
         self.convs = ModuleList()
 
         self.jk = None
-        if jk != 'last':
+        if jk != "last":
             self.jk = JumpingKnowledge(jk, hidden_channels, num_layers)
 
         self.norms = None
         if norm is not None:
-            self.norms = ModuleList(
-                [copy.deepcopy(norm) for _ in range(num_layers)])
+            self.norms = ModuleList([copy.deepcopy(norm) for _ in range(num_layers)])
 
     def reset_parameters(self):
         for conv in self.convs:
@@ -135,8 +142,10 @@ class BasicGNN(torch.nn.Module):
         return x if self.jk is None else self.jk(xs)
 
     def __repr__(self) -> str:
-        return (f'{self.__class__.__name__}({self.in_channels}, '
-                f'{self.out_channels}, num_layers={self.num_layers})')
+        return (
+            f"{self.__class__.__name__}({self.in_channels}, "
+            f"{self.out_channels}, num_layers={self.num_layers})"
+        )
 
 
 class GCN(BasicGNN):
@@ -160,19 +169,25 @@ class GCN(BasicGNN):
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.GCNConv`.
     """
-    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
-                 dropout: float = 0.0,
-                 act: Optional[Callable] = ReLU(inplace=True),
-                 norm: Optional[torch.nn.Module] = None, jk: str = 'last',
-                 **kwargs):
-        super().__init__(in_channels, hidden_channels, num_layers, dropout,
-                         act, norm, jk)
+
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        num_layers: int,
+        dropout: float = 0.0,
+        act: Optional[Callable] = ReLU(inplace=True),
+        norm: Optional[torch.nn.Module] = None,
+        jk: str = "last",
+        **kwargs,
+    ):
+        super().__init__(
+            in_channels, hidden_channels, num_layers, dropout, act, norm, jk
+        )
 
         self.convs.append(GCNConv(in_channels, hidden_channels, **kwargs))
         for _ in range(1, num_layers):
-            self.convs.append(
-                GCNConv(hidden_channels, hidden_channels, **kwargs))
-
+            self.convs.append(GCNConv(hidden_channels, hidden_channels, **kwargs))
 
 
 class GraphSAGE(BasicGNN):
@@ -195,19 +210,25 @@ class GraphSAGE(BasicGNN):
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.SAGEConv`.
     """
-    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
-                 dropout: float = 0.0,
-                 act: Optional[Callable] = ReLU(inplace=True),
-                 norm: Optional[torch.nn.Module] = None, jk: str = 'last',
-                 **kwargs):
-        super().__init__(in_channels, hidden_channels, num_layers, dropout,
-                         act, norm, jk)
+
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        num_layers: int,
+        dropout: float = 0.0,
+        act: Optional[Callable] = ReLU(inplace=True),
+        norm: Optional[torch.nn.Module] = None,
+        jk: str = "last",
+        **kwargs,
+    ):
+        super().__init__(
+            in_channels, hidden_channels, num_layers, dropout, act, norm, jk
+        )
 
         self.convs.append(SAGEConv(in_channels, hidden_channels, **kwargs))
         for _ in range(1, num_layers):
-            self.convs.append(
-                SAGEConv(hidden_channels, hidden_channels, **kwargs))
-
+            self.convs.append(SAGEConv(hidden_channels, hidden_channels, **kwargs))
 
 
 class GIN(BasicGNN):
@@ -230,19 +251,27 @@ class GIN(BasicGNN):
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.GINConv`.
     """
-    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
-                 dropout: float = 0.0,
-                 act: Optional[Callable] = ReLU(inplace=True),
-                 norm: Optional[torch.nn.Module] = None, jk: str = 'last',
-                 **kwargs):
-        super().__init__(in_channels, hidden_channels, num_layers, dropout,
-                         act, norm, jk)
 
-        self.convs.append(
-            GINConv(GIN.MLP(in_channels, hidden_channels), **kwargs))
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        num_layers: int,
+        dropout: float = 0.0,
+        act: Optional[Callable] = ReLU(inplace=True),
+        norm: Optional[torch.nn.Module] = None,
+        jk: str = "last",
+        **kwargs,
+    ):
+        super().__init__(
+            in_channels, hidden_channels, num_layers, dropout, act, norm, jk
+        )
+
+        self.convs.append(GINConv(GIN.MLP(in_channels, hidden_channels), **kwargs))
         for _ in range(1, num_layers):
             self.convs.append(
-                GINConv(GIN.MLP(hidden_channels, hidden_channels), **kwargs))
+                GINConv(GIN.MLP(hidden_channels, hidden_channels), **kwargs)
+            )
 
     @staticmethod
     def MLP(in_channels: int, out_channels: int) -> torch.nn.Module:
@@ -252,7 +281,6 @@ class GIN(BasicGNN):
             ReLU(inplace=True),
             Linear(out_channels, out_channels),
         )
-
 
 
 class GAT(BasicGNN):
@@ -275,45 +303,73 @@ class GAT(BasicGNN):
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.GATConv`.
     """
-    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
-                 dropout: float = 0.0,
-                 act: Optional[Callable] = ReLU(inplace=True),
-                 norm: Optional[torch.nn.Module] = None, jk: str = 'last',
-                 **kwargs):
-        super().__init__(in_channels, hidden_channels, num_layers, dropout,
-                         act, norm, jk)
 
-        if 'concat' in kwargs:
-            del kwargs['concat']
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        num_layers: int,
+        dropout: float = 0.0,
+        act: Optional[Callable] = ReLU(inplace=True),
+        norm: Optional[torch.nn.Module] = None,
+        jk: str = "last",
+        **kwargs,
+    ):
+        super().__init__(
+            in_channels, hidden_channels, num_layers, dropout, act, norm, jk
+        )
 
-        if 'heads' in kwargs:
-            assert hidden_channels % kwargs['heads'] == 0
-        out_channels = hidden_channels // kwargs.get('heads', 1)
+        if "concat" in kwargs:
+            del kwargs["concat"]
 
-        self.convs.append(
-            GATConv(in_channels, out_channels, dropout=dropout, **kwargs))
+        if "heads" in kwargs:
+            assert hidden_channels % kwargs["heads"] == 0
+        out_channels = hidden_channels // kwargs.get("heads", 1)
+
+        self.convs.append(GATConv(in_channels, out_channels, dropout=dropout, **kwargs))
         for _ in range(1, num_layers):
             self.convs.append(GATConv(hidden_channels, out_channels, **kwargs))
 
-#From me
+
+# From me
+
 
 class GINGATConv(GATConv):
-    
-    def __init__(self, nn: Callable, in_channels: Union[int, Tuple[int, int]],
-                 out_channels: int, heads: int = 1, concat: bool = True,
-                 negative_slope: float = 0.2, dropout: float = 0.0,
-                 add_self_loops: bool = True, bias: bool = True, **kwargs):
+    def __init__(
+        self,
+        nn: Callable,
+        in_channels: Union[int, Tuple[int, int]],
+        out_channels: int,
+        heads: int = 1,
+        concat: bool = True,
+        negative_slope: float = 0.2,
+        dropout: float = 0.0,
+        add_self_loops: bool = True,
+        bias: bool = True,
+        **kwargs,
+    ):
 
-        super(GINGATConv, self).__init__(in_channels,
-                 out_channels, heads, concat,
-                 negative_slope, dropout,
-                 add_self_loops, bias, **kwargs)
+        super(GINGATConv, self).__init__(
+            in_channels,
+            out_channels,
+            heads,
+            concat,
+            negative_slope,
+            dropout,
+            add_self_loops,
+            bias,
+            **kwargs,
+        )
 
-        
         self.nn = nn
 
-    def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj,
-                size: Size = None, return_attention_weights=None):
+    def forward(
+        self,
+        x: Union[Tensor, OptPairTensor],
+        edge_index: Adj,
+        size: Size = None,
+        return_attention_weights=None,
+    ):
         # type: (Union[Tensor, OptPairTensor], Tensor, Size, NoneType) -> Tensor  # noqa
         # type: (Union[Tensor, OptPairTensor], SparseTensor, Size, NoneType) -> Tensor  # noqa
         # type: (Union[Tensor, OptPairTensor], Tensor, Size, bool) -> Tuple[Tensor, Tuple[Tensor, Tensor]]  # noqa
@@ -326,36 +382,59 @@ class GINGATConv(GATConv):
                 attention weights for each edge. (default: :obj:`None`)
         """
 
-        out = super(GINGATConv, self).forward(x, edge_index, size, return_attention_weights)
+        out = super(GINGATConv, self).forward(
+            x, edge_index, size, return_attention_weights
+        )
 
         if isinstance(out, tuple):
             out[0] = self.nn(out)
         else:
             out = self.nn(out)
-        
+
         return out
-    
+
+
 class GINGAT(BasicGNN):
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        num_layers: int,
+        dropout: float = 0.0,
+        act: Optional[Callable] = ReLU(inplace=True),
+        norm: Optional[torch.nn.Module] = None,
+        jk: str = "last",
+        **kwargs,
+    ):
+        super().__init__(
+            in_channels, hidden_channels, num_layers, dropout, act, norm, jk
+        )
 
-    def __init__(self, in_channels: int, hidden_channels: int, num_layers: int,
-                 dropout: float = 0.0,
-                 act: Optional[Callable] = ReLU(inplace=True),
-                 norm: Optional[torch.nn.Module] = None, jk: str = 'last',
-                 **kwargs):
-        super().__init__(in_channels, hidden_channels, num_layers, dropout,
-                         act, norm, jk)
+        if "concat" in kwargs:
+            del kwargs["concat"]
 
-        if 'concat' in kwargs:
-            del kwargs['concat']
-
-        if 'heads' in kwargs:
-            assert hidden_channels % kwargs['heads'] == 0
-        out_channels = hidden_channels // kwargs.get('heads', 1)
+        if "heads" in kwargs:
+            assert hidden_channels % kwargs["heads"] == 0
+        out_channels = hidden_channels // kwargs.get("heads", 1)
 
         self.convs.append(
-            GINGATConv(GINGAT.MLP(hidden_channels, hidden_channels), in_channels, out_channels, dropout=dropout, **kwargs))
+            GINGATConv(
+                GINGAT.MLP(hidden_channels, hidden_channels),
+                in_channels,
+                out_channels,
+                dropout=dropout,
+                **kwargs,
+            )
+        )
         for _ in range(1, num_layers):
-            self.convs.append(GINGATConv(GINGAT.MLP(hidden_channels, hidden_channels), hidden_channels, out_channels, **kwargs))
+            self.convs.append(
+                GINGATConv(
+                    GINGAT.MLP(hidden_channels, hidden_channels),
+                    hidden_channels,
+                    out_channels,
+                    **kwargs,
+                )
+            )
 
     @staticmethod
     def MLP(in_channels: int, out_channels: int) -> torch.nn.Module:
@@ -366,27 +445,31 @@ class GINGAT(BasicGNN):
             Linear(out_channels, out_channels),
         )
 
-class Symlog(nn.Module):
 
-    def __init__(self, inplace = False, base = torch.tensor(2.71828182845904523536028747135266249775724709369995)):
+class Symlog(nn.Module):
+    def __init__(
+        self,
+        inplace=False,
+        base=torch.tensor(2.71828182845904523536028747135266249775724709369995),
+    ):
         super().__init__()
         self.inplace = inplace
-        self.logbase = nn.Parameter(torch.log(base), requires_grad=False)#maybe grad?
+        self.logbase = nn.Parameter(torch.log(base), requires_grad=False)  # maybe grad?
 
     def forward(self, x):
         is_neg = x < -1
         is_pos = x > 1
-        
+
         if self.inplace:
-            x[is_neg] = -(torch.log(-x[is_neg])/self.logbase) - 1
-            x[is_pos] = (torch.log(x[is_pos])/self.logbase) + 1
+            x[is_neg] = -(torch.log(-x[is_neg]) / self.logbase) - 1
+            x[is_pos] = (torch.log(x[is_pos]) / self.logbase) + 1
             return x
         else:
             x_ = torch.empty_like(x)
             is_mid = abs(x) < 1
 
-            x_[is_neg] = -(torch.log(-x[is_neg])/self.logbase) - 1
-            x_[is_pos] = (torch.log(x[is_pos])/self.logbase) + 1
+            x_[is_neg] = -(torch.log(-x[is_neg]) / self.logbase) - 1
+            x_[is_pos] = (torch.log(x[is_pos]) / self.logbase) + 1
             x_[is_mid] = x[is_mid]
 
             return x_
