@@ -7,6 +7,7 @@ __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
 from typing import Optional, Callable, List
+from torch.utils.tensorboard.writer import SummaryWriter
 from torch_geometric.typing import OptPairTensor, Adj, Size, NoneType
 
 
@@ -32,6 +33,11 @@ import abc
 
 
 class AbstractBaseline(abc.ABC, nn.Module):
+    def __init__(self, logger: Optional[SummaryWriter] = None, **kwargs) -> None:
+        super().__init__()
+
+        self.logger = logger
+
     def epoch_log(self, epoch):
         pass
 
@@ -41,36 +47,61 @@ class MLP(nn.Module):
         self,
         n_layers: int,
         input_dim: int,
-        hidden_dim: int,
         output_dim: int,
-        dropout: float,
-        activation,
+        activation: nn.Module = nn.ReLU(inplace=True),
+        dropout: float = 0.0,
+        hidden_dim: Optional[int] = None,
+        use_batch_norm: bool = False,
+        output_activation: Optional[nn.Module] = None,
         **kwargs,
     ):
         super(MLP, self).__init__()
 
+        assert hidden_dim is not None or n_layers == 1
+
         if n_layers == 1:
             modules = [nn.Dropout(p=dropout), nn.Linear(input_dim, output_dim)]
         else:
-            modules = [nn.Dropout(p=dropout), nn.Linear(input_dim, hidden_dim)]
+            if use_batch_norm:
+                modules = [
+                    nn.Dropout(p=dropout),
+                    nn.Linear(input_dim, hidden_dim),
+                    nn.BatchNorm1d(hidden_dim),
+                ]
+            else:
+                modules = [nn.Dropout(p=dropout), nn.Linear(input_dim, hidden_dim)]
 
             for i in range(n_layers - 2):
-                modules.extend(
-                    [
-                        activation,
-                        nn.Dropout(p=dropout),
-                        nn.Linear(hidden_dim, hidden_dim),
-                    ]
-                )
+                if use_batch_norm:
+                    modules.extend(
+                        [
+                            activation,
+                            nn.Dropout(p=dropout),
+                            nn.Linear(hidden_dim, hidden_dim),
+                            nn.BatchNorm1d(hidden_dim),
+                        ]
+                    )
+                else:
+                    modules.extend(
+                        [
+                            activation,
+                            nn.Dropout(p=dropout),
+                            nn.Linear(hidden_dim, hidden_dim),
+                        ]
+                    )
 
             modules.extend(
                 [activation, nn.Dropout(p=dropout), nn.Linear(hidden_dim, output_dim)]
             )
 
         self.net = nn.Sequential(*modules)
+        self.output_activation = output_activation
 
     def forward(self, x):
-        return torch.sigmoid(self.net(x))
+        x = self.net(x)
+        if self.output_activation is not None:
+            return self.output_activation(x)
+        return x
 
 
 class BasicGNN(torch.nn.Module):

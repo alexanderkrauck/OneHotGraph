@@ -38,7 +38,7 @@ def main(
     use_tqdm: bool = False,
 ):
 
-    # TODO: Add device check
+
     if torch.cuda.is_available():
         if device.isdigit():
             device_n = int(device)

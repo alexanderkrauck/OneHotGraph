@@ -16,7 +16,7 @@ from torch_geometric import nn as gnn
 import torch.nn.functional as F
 from torch.nn import Conv1d
 
-from utils.basic_modules import Symlog
+from utils.basic_modules import MLP, Symlog
 
 import torch_scatter
 import torch_geometric
@@ -51,7 +51,7 @@ class AttentionOneHotConv(nn.Module):
         heads: int
             The number of attention heads that are being used
         concat: bool
-            Whether the heads should be concatenated #TODO: look this up
+            Whether the attention-heads should be concatenated or averaged (as in Velickovic et al.'s paper) => But they average in output layers!
         negative_slope: float
             The negative slope for the LeakyReLU activation used for the node-attetion
         dropout: float
@@ -118,12 +118,14 @@ class AttentionOneHotConv(nn.Module):
             )
 
         if self.one_hot_mode == "ffn":
-            self.onehot_pipe = nn.Sequential(
-                nn.Linear(first_n_one_hot, 64),
-                nn.BatchNorm1d(64),
-                nn.ReLU(inplace=True),
-                nn.Linear(64, one_hot_channels),
+            self.onehot_pipe = MLP(
+                n_layers=2,
+                input_dim=first_n_one_hot,
+                hidden_dim=64,
+                output_dim=one_hot_channels,
+                use_batch_norm=True,
             )
+
 
         if bias and concat:
             self.bias = nn.Parameter(torch.Tensor(heads * out_channels))
@@ -383,11 +385,13 @@ class IsomporphismOneHotConv(nn.Module):
         self.one_hot_cannels = one_hot_channels
         self.first_n_one_hot = first_n_one_hot
 
-        self.first_linear = nn.Linear(in_channels + one_hot_channels, out_channels)
-        self.mlp = nn.Sequential(
-            nn.BatchNorm1d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Linear(out_channels, out_channels),
+        self.mlp = MLP(
+            n_layers=2,
+            input_dim=in_channels + one_hot_channels,
+            output_dim=out_channels,
+            hidden_dim=out_channels,
+            use_batch_norm=True,
+            output_activation=None,
         )
 
         self.info_act = Symlog()
@@ -404,11 +408,12 @@ class IsomporphismOneHotConv(nn.Module):
             )
 
         if self.one_hot_mode == "ffn":
-            self.onehot_pipe = nn.Sequential(
-                nn.Linear(first_n_one_hot, 64),
-                nn.BatchNorm1d(64),
-                nn.ReLU(inplace=True),
-                nn.Linear(64, one_hot_channels),
+            self.onehot_pipe = MLP(
+                n_layers=2,
+                input_dim=first_n_one_hot,
+                hidden_dim=64,
+                output_dim=one_hot_channels,
+                use_batch_norm=True,
             )
 
         self.reset_parameters()
@@ -483,7 +488,6 @@ class IsomporphismOneHotConv(nn.Module):
             prepared_onehot = self.onehot_pipe(prepared_onehot)
             x = torch.hstack((x, prepared_onehot))
 
-            x = self.first_linear(x)
             x = self.mlp(x)
 
             res_xs.append(x)

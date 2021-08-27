@@ -24,10 +24,9 @@ class GIN_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWriter = None,
         **kwargs
     ):
-        super(GIN_Baseline, self).__init__()
+        super(GIN_Baseline, self).__init__(**kwargs)
         self.gin = GIN(
             data_module.num_node_features,
             n_hidden_channels,
@@ -37,12 +36,12 @@ class GIN_Baseline(AbstractBaseline):
         )
 
         self.head = MLP(
-            n_linear_layers,
-            n_hidden_channels,
-            n_hidden_channels,
-            data_module.num_classes,
-            p_linear_dropout,
-            nn.ReLU(),
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
         )
 
     def forward(self, x, edge_index, batch_sample_indices, **kwargs):
@@ -69,10 +68,9 @@ class GAT_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWriter = None,
         **kwargs
     ):
-        super(GAT_Baseline, self).__init__()
+        super(GAT_Baseline, self).__init__(**kwargs)
         self.gat = GAT(
             data_module.num_node_features,
             n_hidden_channels,
@@ -82,12 +80,12 @@ class GAT_Baseline(AbstractBaseline):
         )
 
         self.head = MLP(
-            n_linear_layers,
-            n_hidden_channels,
-            n_hidden_channels,
-            data_module.num_classes,
-            p_linear_dropout,
-            nn.ReLU(),
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
         )
 
     def forward(self, x, edge_index, batch_sample_indices, **kwargs):
@@ -114,10 +112,9 @@ class Sinkhorn_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWriter = None,
         **kwargs
     ):
-        super(Sinkhorn_Baseline, self).__init__()
+        super(Sinkhorn_Baseline, self).__init__(**kwargs)
         self.sinkhorn_gat = SinkhornGAT(
             data_module.num_node_features,
             n_hidden_channels,
@@ -127,13 +124,12 @@ class Sinkhorn_Baseline(AbstractBaseline):
         )
 
         self.head = MLP(
-            n_linear_layers,
-            n_hidden_channels,
-            n_hidden_channels,
-            data_module.num_classes,
-            p_linear_dropout,
-            nn.ReLU(),
-            **kwargs
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid() ** kwargs,
         )
 
     def forward(self, x, edge_index, batch_sample_indices, **kwargs):
@@ -160,10 +156,9 @@ class GINGAT_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWriter = None,
         **kwargs
     ):
-        super(GINGAT_Baseline, self).__init__()
+        super(GINGAT_Baseline, self).__init__(**kwargs)
         self.gingat = GINGAT(
             data_module.num_node_features,
             n_hidden_channels,
@@ -173,12 +168,12 @@ class GINGAT_Baseline(AbstractBaseline):
         )
 
         self.head = MLP(
-            n_linear_layers,
-            n_hidden_channels,
-            n_hidden_channels,
-            data_module.num_classes,
-            p_linear_dropout,
-            nn.ReLU(),
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
         )
 
     def forward(self, x, edge_index, batch_sample_indices, **kwargs):
@@ -205,10 +200,9 @@ class AttentionOneHotGraph_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWriter = None,
         **kwargs
     ):
-        super(AttentionOneHotGraph_Baseline, self).__init__()
+        super(AttentionOneHotGraph_Baseline, self).__init__(**kwargs)
 
         self.ohg = OneHotGraph(
             data_module.num_node_features,
@@ -220,12 +214,12 @@ class AttentionOneHotGraph_Baseline(AbstractBaseline):
         )
 
         self.head = MLP(
-            n_linear_layers,
-            n_hidden_channels,
-            n_hidden_channels,
-            data_module.num_classes,
-            p_linear_dropout,
-            nn.ReLU(),
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
         )
 
     def forward(
@@ -254,11 +248,10 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWriter = None,
         one_hot_channels=8,
         **kwargs
     ):
-        super(IsomorphismOneHotGraph_Baseline, self).__init__()
+        super(IsomorphismOneHotGraph_Baseline, self).__init__(**kwargs)
 
         self.ohg = OneHotGraph(
             data_module.num_node_features,
@@ -271,14 +264,13 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
         )
 
         self.one_hot_channels = one_hot_channels
-        self.logger = logger
         self.head = MLP(
-            n_linear_layers,
-            n_hidden_channels,
-            n_hidden_channels,
-            data_module.num_classes,
-            p_linear_dropout,
-            nn.ReLU(),
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
         )
 
     def forward(
@@ -298,9 +290,9 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
         return x
 
     def epoch_log(self, epoch=0):
-        if self.logger:
+        if self.logger is not None:
             for name, param in self.named_parameters():
-                if "ohg.convs.0.first_linear.weight" == name:
+                if "ohg.convs.0.mlp.linear.0.weight" == name:  # TODO CHECK THIS
                     val = param[:, -self.one_hot_channels :].detach().abs().mean()
                     self.logger.add_scalar("OH-Part", val, global_step=epoch)
                     del val
