@@ -24,7 +24,7 @@ class GIN_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWrite = None,
+        logger: SummaryWriter = None,
         **kwargs
     ):
         super(GIN_Baseline, self).__init__()
