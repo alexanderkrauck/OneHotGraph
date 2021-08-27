@@ -115,6 +115,12 @@ class SinkhornGATConv(GATConv):
         **kwargs
     ):
 
+        keep_keys = ["aggr", "flow", "node_dim"]
+        new_kwargs = {}
+        for key in keep_keys:
+            if key in kwargs:
+                new_kwargs[key] = kwargs[key]
+
         super(SinkhornGATConv, self).__init__(
             in_channels,
             out_channels,
@@ -124,7 +130,7 @@ class SinkhornGATConv(GATConv):
             dropout,
             add_self_loops,
             bias,
-            **kwargs
+            **new_kwargs
         )
 
         self.norm_mode = norm_mode
