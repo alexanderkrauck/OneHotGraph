@@ -24,6 +24,7 @@ class GIN_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
+        logger: SummaryWrite = None,
         **kwargs
     ):
         super(GIN_Baseline, self).__init__()
@@ -68,6 +69,7 @@ class GAT_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
+        logger: SummaryWriter = None,
         **kwargs
     ):
         super(GAT_Baseline, self).__init__()
@@ -112,6 +114,7 @@ class Sinkhorn_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
+        logger: SummaryWriter = None,
         **kwargs
     ):
         super(Sinkhorn_Baseline, self).__init__()
@@ -157,6 +160,7 @@ class GINGAT_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
+        logger: SummaryWriter = None,
         **kwargs
     ):
         super(GINGAT_Baseline, self).__init__()
@@ -201,6 +205,7 @@ class AttentionOneHotGraph_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
+        logger: SummaryWriter = None,
         **kwargs
     ):
         super(AttentionOneHotGraph_Baseline, self).__init__()
@@ -249,7 +254,7 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
         p_graph_dropout,
         n_linear_layers,
         p_linear_dropout,
-        logger: SummaryWriter,
+        logger: SummaryWriter = None,
         one_hot_channels=8,
         **kwargs
     ):
@@ -293,8 +298,9 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
         return x
 
     def epoch_log(self, epoch=0):
-        for name, param in self.named_parameters():
-            if "ohg.convs.0.first_linear.weight" == name:
-                val = param[:, -self.one_hot_channels :].detach().abs().mean()
-                self.logger.add_scalar("OH-Part", val, global_step=epoch)
-                del val
+        if self.logger:
+            for name, param in self.named_parameters():
+                if "ohg.convs.0.first_linear.weight" == name:
+                    val = param[:, -self.one_hot_channels :].detach().abs().mean()
+                    self.logger.add_scalar("OH-Part", val, global_step=epoch)
+                    del val
