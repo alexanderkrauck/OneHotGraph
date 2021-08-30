@@ -47,7 +47,7 @@ def train(
     probs_list = [[] for d in range(n_classes)]
 
     if use_tqdm:
-        iterate = tqdm.tqdm(loader, desc = f"Epoch {epoch} ")
+        iterate = tqdm.tqdm(loader, desc=f"Epoch {epoch} ")
     else:
         iterate = loader
 
@@ -149,7 +149,7 @@ def test(
         dataset_class_names = range(n_classes)
 
     if use_tqdm:
-        iterate = tqdm.tqdm(loader, desc = f"Epoch {epoch} ")
+        iterate = tqdm.tqdm(loader, desc=f"Epoch {epoch} ")
     else:
         iterate = loader
 
@@ -263,17 +263,7 @@ def train_config(
     model.epoch_log(epoch=0)
     best_epoch_dict = {}
 
-    best_test_metric_dict = test(
-        model,
-        val_loader,
-        data_module.num_classes,
-        0,
-        logger,
-        data_module.class_names,
-        run_type="validation",
-        device=device,
-        **kwargs,
-    )
+    best_test_metric_dict = {}
 
     for epoch in range(1, epochs + 1):
 
@@ -326,19 +316,25 @@ def train_config(
             for metric in better_in:
 
                 best_test_metric_dict[metric] = test_metric_dict
-                if save == "best":
-                    torch.save(
-                        model.state_dict(),
-                        join(logger.get_logdir(), f"best_{metric}.ckp"),
-                    )  # this overwrites the old
-                elif save == "all":
-                    torch.save(
-                        model.state_dict(),
-                        join(
-                            logger.get_logdir(),
-                            f"{metric}-{test_metric_dict[metric]}.ckp",
-                        ),
-                    )  # this not
+                if save != "none":
+                    to_save = {
+                        "model": model.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                        "kwargs": kwargs,
+                    }
+
+                    if save == "best":
+                        torch.save(
+                            to_save, join(logger.get_logdir(), f"best_{metric}.ckp"),
+                        )  # this overwrites the old
+                    elif save == "all":
+                        torch.save(
+                            to_save,
+                            join(
+                                logger.get_logdir(),
+                                f"{metric}-{test_metric_dict[metric]}.ckp",
+                            ),
+                        )  # this not
 
         lr_scheduler.step(metric_dict["Mean_AUC_ROC"])
         if (
