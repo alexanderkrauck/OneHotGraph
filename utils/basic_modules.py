@@ -298,10 +298,22 @@ class GIN(BasicGNN):
             in_channels, hidden_channels, num_layers, dropout, act, norm, jk
         )
 
-        self.convs.append(GINConv(GIN.MLP(in_channels, hidden_channels), **kwargs))
+        keep_keys = [
+            "train_eps",
+            "eps",
+            "aggr",
+            "flow",
+            "node_dim"
+        ]
+        new_kwargs = {}
+        for key in keep_keys:
+            if key in kwargs:
+                new_kwargs[key] = kwargs[key]
+
+        self.convs.append(GINConv(GIN.MLP(in_channels, hidden_channels), **new_kwargs))
         for _ in range(1, num_layers):
             self.convs.append(
-                GINConv(GIN.MLP(hidden_channels, hidden_channels), **kwargs)
+                GINConv(GIN.MLP(hidden_channels, hidden_channels), **new_kwargs)
             )
 
     @staticmethod
@@ -357,13 +369,24 @@ class GAT(BasicGNN):
             assert hidden_channels % kwargs["heads"] == 0
         out_channels = hidden_channels // kwargs.get("heads", 1)
 
-        keep_keys = ["aggr", "flow", "node_dim", "heads", "concat", "negative_slope", "add_self_loops", "bias"]
+        keep_keys = [
+            "aggr",
+            "flow",
+            "node_dim",
+            "heads",
+            "concat",
+            "negative_slope",
+            "add_self_loops",
+            "bias",
+        ]
         new_kwargs = {}
         for key in keep_keys:
             if key in kwargs:
                 new_kwargs[key] = kwargs[key]
 
-        self.convs.append(GATConv(in_channels, out_channels, dropout=dropout, **new_kwargs))
+        self.convs.append(
+            GATConv(in_channels, out_channels, dropout=dropout, **new_kwargs)
+        )
         for _ in range(1, num_layers):
             self.convs.append(GATConv(hidden_channels, out_channels, **new_kwargs))
 
