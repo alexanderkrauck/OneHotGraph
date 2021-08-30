@@ -218,9 +218,11 @@ def train_config(
     scheduler_min_lr=1e-6,
     scheduler_factor=0.5,
     scheduler_cooldown=3,
+    seed = 1337,
     **kwargs,
 ):
 
+    torch.manual_seed(seed)
     model = model_class(data_module=data_module, logger=logger, **kwargs).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -235,8 +237,8 @@ def train_config(
     )
 
     train_loader = data_module.make_train_loader(batch_size=batch_size)
-    val_loader = data_module.make_val_loader()
-    test_loader = data_module.make_test_loader()
+    val_loader = data_module.make_val_loader(batch_size=batch_size)
+    test_loader = data_module.make_test_loader(batch_size=batch_size)
 
     test(
         model,
