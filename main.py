@@ -38,7 +38,6 @@ def main(
     use_tqdm: bool = False,
 ):
 
-
     if torch.cuda.is_available():
         if device.isdigit():
             device_n = int(device)
@@ -100,48 +99,66 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument(
-        "-n", "--name", help="Name of the experiment", default=f"*time*"
+        "-n", "--name", help="Name of the experiment", default=f"*time*", type=str
     )
     parser.add_argument(
-        "-l", "--logdir", help="Directories where logs are stored", default=f"runs"
+        "-l",
+        "--logdir",
+        help="Directories where logs are stored",
+        default=f"runs",
+        type=str,
     )
-    parser.add_argument("-c", "--configs", help="Number of configs to try", default=5)
     parser.add_argument(
-        "-a", "--architecture", help="The architecture of choice", default="aohg"
+        "-c", "--configs", help="Number of configs to try", default=5, type=int
     )
-    parser.add_argument("-d", "--device", help="The device of choice", default="cuda")
+    parser.add_argument(
+        "-a",
+        "--architecture",
+        help="The architecture of choice",
+        default="aohg",
+        type=str,
+    )
+    parser.add_argument(
+        "-d", "--device", help="The device of choice", default="cuda", type=str
+    )
     parser.add_argument(
         "-e",
         "--epochs",
         help="The number of epochs to run for each config",
         default=150,
+        type=int,
     )
     parser.add_argument("-s", "--save", help="The save mode", default="best")
     parser.add_argument(
-        "-w", "--workers", help="The number of workers the dataloaders use", default=4
+        "-w",
+        "--workers",
+        help="The number of workers the dataloaders use",
+        default=4,
+        type=int,
     )
     parser.add_argument(
         "-y",
         "--yaml",
         help="The yaml file with the search grid",
         default="grids/grid_manual.yml",
+        type=str,
     )
     parser.add_argument(
-        "-t", "--use_tqdm", help="Whether to use tqdm or not", default="True"
+        "-t", "--use_tqdm", help="Whether to use tqdm or not", default="True", type=bool
     )
 
     args = parser.parse_args()
 
-    logdir = str(args.logdir)
-    name = str(args.name)
-    configs = int(args.configs)
-    architecture = str(args.architecture).lower()
-    device = str(args.device)
-    epochs = int(args.epochs)
-    save = str(args.save)
-    workers = int(args.workers)
-    yaml_file = str(args.yaml)
-    use_tqdm = bool(args.use_tqdm)
+    logdir = args.logdir
+    name = args.name
+    configs = args.configs
+    architecture = args.architecture.lower()
+    device = args.device
+    epochs = args.epochs
+    save = args.save
+    workers = args.workers
+    yaml_file = args.yaml
+    use_tqdm = args.use_tqdm
 
     main(
         name,
