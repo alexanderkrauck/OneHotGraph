@@ -129,7 +129,8 @@ class Sinkhorn_Baseline(AbstractBaseline):
             hidden_dim=n_hidden_channels,
             output_dim=data_module.num_classes,
             dropout=p_linear_dropout,
-            output_activation=nn.Sigmoid() ** kwargs,
+            output_activation=nn.Sigmoid(),
+            **kwargs
         )
 
     def forward(self, x, edge_index, batch_sample_indices, **kwargs):
