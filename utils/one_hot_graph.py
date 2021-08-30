@@ -33,6 +33,7 @@ class AttentionOneHotConv(nn.Module):
         dropout: float = 0.0,
         add_self_loops: bool = True,
         bias: bool = True,
+        use_normal_attention: bool = True,
         one_hot_attention: str = "dot",
         one_hot_mode: str = "conv",
         one_hot_incay: str = "add",
@@ -60,6 +61,9 @@ class AttentionOneHotConv(nn.Module):
             Whether or not to add self loops for each node
         bias: bool
             Whether or not to use bias weights for the final computation of the next hidden states
+        use_normal_attention: bool
+            Wether or not to use the "normal" GAT attention mechanism which is dependent on the nodes.
+            This makes attention heads unnecessary and thus it is required that heads = 1.
         one_hot_attention: str
             Which attention function to use between the one hot weights.
             Possible are "dot", "none" and "uoi" (Union over Intersection, which is the inverse of the Jaccard metric or the Intersection over Union)
@@ -79,6 +83,8 @@ class AttentionOneHotConv(nn.Module):
 
         super(AttentionOneHotConv, self).__init__()
 
+        assert use_normal_attention == False or heads == 1
+
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.heads = heads
@@ -90,6 +96,7 @@ class AttentionOneHotConv(nn.Module):
         self.one_hot_mode = one_hot_mode
         self.one_hot_incay = one_hot_incay
         self.first_n_one_hot = first_n_one_hot
+        self.use_normal_attention = use_normal_attention
 
         if one_hot_mode == "none":
             one_hot_channels = 0
@@ -100,8 +107,9 @@ class AttentionOneHotConv(nn.Module):
             in_channels + one_hot_channels, heads * out_channels, bias=False
         )
 
-        self.att_l = nn.Parameter(torch.Tensor(1, heads, out_channels))
-        self.att_r = nn.Parameter(torch.Tensor(1, heads, out_channels))
+        if self.use_normal_attention:
+            self.att_l = nn.Parameter(torch.Tensor(1, heads, out_channels))
+            self.att_r = nn.Parameter(torch.Tensor(1, heads, out_channels))
 
         self.pre_att_act = Symlog()
         self.pre_info_act = Symlog()
@@ -126,7 +134,6 @@ class AttentionOneHotConv(nn.Module):
                 use_batch_norm=True,
             )
 
-
         if bias and concat:
             self.bias = nn.Parameter(torch.Tensor(heads * out_channels))
         elif bias and not concat:
@@ -140,8 +147,9 @@ class AttentionOneHotConv(nn.Module):
 
     def reset_parameters(self):
         gnn.inits.glorot(self.lin.weight)
-        gnn.inits.glorot(self.att_l)
-        gnn.inits.glorot(self.att_r)
+        if self.use_normal_attention:
+            gnn.inits.glorot(self.att_l)
+            gnn.inits.glorot(self.att_r)
         gnn.inits.zeros(self.bias)
 
     def index_select_onehots(self, onehots, adjs):
@@ -214,17 +222,21 @@ class AttentionOneHotConv(nn.Module):
             # if I only add the onehotvectors here I doubt that one linear transform will be enough.
             x = self.lin(x).view(-1, self.heads, self.out_channels)
 
-            sending_alphas = (x * self.att_l).sum(dim=-1)
-            receiving_alphas = (x * self.att_r).sum(dim=-1)
+            if self.use_normal_attention:
+                sending_alphas = (x * self.att_l).sum(dim=-1)
+                receiving_alphas = (x * self.att_r).sum(dim=-1)
 
             if self.add_self_loops:
 
                 adj, _ = torch_geometric.utils.remove_self_loops(adj)
                 adj, _ = torch_geometric.utils.add_self_loops(adj, num_nodes=n_nodes)
 
-            x, onehots = self.propagate(
-                x, onehot, sending_alphas, receiving_alphas, adj, n_nodes
-            )
+            if self.use_normal_attention:
+                x, onehots = self.propagate(
+                    x, onehot, adj, n_nodes, sending_alphas, receiving_alphas,
+                )
+            else:
+                x, onehots = self.propagate(x, onehot, adj, n_nodes)
 
             if self.concat:
                 x = x.view(-1, self.heads * self.out_channels)
@@ -243,10 +255,10 @@ class AttentionOneHotConv(nn.Module):
         self,
         x: Tensor,
         onehot: Tensor,
-        sending_alphas: Tensor,
-        receiving_alphas: Tensor,
         adj: Tensor,
         n_nodes: int,
+        sending_alphas: Optional[Tensor] = None,
+        receiving_alphas: Optional[Tensor] = None,
         **kwargs
     ):
 
@@ -256,16 +268,18 @@ class AttentionOneHotConv(nn.Module):
         sending_x = x.index_select(0, sending_indices)
         sending_onehots = onehot.index_select(0, sending_indices)
         receiving_onehots = onehot.index_select(0, receiving_indices)
-        sending_alphas = sending_alphas.index_select(0, sending_indices)
-        receiving_alphas = receiving_alphas.index_select(0, receiving_indices)
+        if sending_alphas is not None:
+            sending_alphas = sending_alphas.index_select(0, sending_indices)
+        if receiving_alphas is not None:
+            receiving_alphas = receiving_alphas.index_select(0, receiving_indices)
 
         weighted_selected_x, weighted_selected_onethots = self.message(
             sending_x=sending_x,
             sending_onehots=sending_onehots,
             receiving_onehots=receiving_onehots,
+            receiving_indices=receiving_indices,
             sending_alphas=sending_alphas,
             receiving_alphas=receiving_alphas,
-            receiving_indices=receiving_indices,
         )
 
         aggregated_selected_x, aggregated_selected_onehots = self.aggregate(
@@ -283,18 +297,21 @@ class AttentionOneHotConv(nn.Module):
         sending_x: Tensor,
         sending_onehots: List[Tensor],
         receiving_onehots: List[Tensor],
-        sending_alphas: Tensor,
-        receiving_alphas: OptTensor,
         receiving_indices: Tensor,
+        sending_alphas: Optional[Tensor] = None,
+        receiving_alphas: Optional[Tensor] = None,
         **kwargs
     ) -> Tuple[Tensor, Tensor]:
 
-        alpha = (
-            sending_alphas
-            if receiving_alphas is None
-            else sending_alphas + receiving_alphas
-        )
-        alpha = F.leaky_relu(alpha, self.negative_slope)
+        if sending_alphas is None:
+            alpha = torch.ones_like(receiving_indices, dtype=torch.float32).unsqueeze(1)
+        else:
+            alpha = (
+                sending_alphas
+                if receiving_alphas is None
+                else sending_alphas + receiving_alphas
+            )
+            alpha = F.leaky_relu(alpha, self.negative_slope)
 
         if self.one_hot_attention != "none":
 
@@ -316,7 +333,7 @@ class AttentionOneHotConv(nn.Module):
                     torch.sum(torch.minimum(sending, receiving), dim=-1) + 1
                 )  # +1 for zeros
 
-            alpha = alpha * onehot_dot_attention.unsqueeze(-1)
+            alpha *= onehot_dot_attention.unsqueeze(-1)
 
         alpha = torch_geometric.utils.softmax(alpha, receiving_indices)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
@@ -421,16 +438,6 @@ class IsomporphismOneHotConv(nn.Module):
     def reset_parameters(self):
         pass  # TODO
 
-    def index_select_onehots(self, onehots, adjs):
-
-        selected_onehots = []
-
-        for onehot, adj in zip(onehots, adjs):
-            selected_onehot = onehot.index_select(0, adj[0])
-            selected_onehots.append(selected_onehot)
-
-        return selected_onehots
-
     def forward(
         self,
         xs: List[Tensor],
@@ -462,6 +469,8 @@ class IsomporphismOneHotConv(nn.Module):
         for x, adj, onehot, n_nodes in zip(xs, adjs, onehots, n_sample_nodes):
 
             x, onehot = self.propagate(x, onehot, adj, n_nodes)
+            #if x.isnan().sum() != 0 or onehot.isnan().sum() != 0:
+            #    print(self)
 
             if self.one_hot_mode == "conv":
                 # Unsqueezing the channel dimension for convs
@@ -562,6 +571,7 @@ class OneHotGraph(nn.Module):
         num_layers: int,
         dropout: float = 0.0,
         heads=1,
+        use_normal_attention=True,
         act: Optional[Callable] = nn.ReLU(inplace=True),
         conv_type=AttentionOneHotConv,
         **kwargs
@@ -570,6 +580,8 @@ class OneHotGraph(nn.Module):
 
         if conv_type == AttentionOneHotConv:
             assert hidden_channels % heads == 0
+            assert heads == 1 or use_normal_attention == False
+
             out_channels = hidden_channels // heads
         if conv_type == IsomporphismOneHotConv:
             out_channels = hidden_channels
@@ -577,11 +589,24 @@ class OneHotGraph(nn.Module):
         self.convs = nn.ModuleList()
 
         self.convs.append(
-            conv_type(in_channels, out_channels, dropout=dropout, heads=heads, **kwargs)
+            conv_type(
+                in_channels,
+                out_channels,
+                dropout=dropout,
+                heads=heads,
+                use_normal_attention=use_normal_attention,
+                **kwargs
+            )
         )
         for _ in range(1, num_layers):
             self.convs.append(
-                conv_type(hidden_channels, out_channels, heads=heads, **kwargs)
+                conv_type(
+                    hidden_channels,
+                    out_channels,
+                    heads=heads,
+                    use_normal_attention=use_normal_attention,
+                    **kwargs
+                )
             )
 
         self.dropout = dropout
