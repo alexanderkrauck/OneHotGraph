@@ -331,7 +331,7 @@ class DataModule:
             collate_fn=collate_fn,
         )
 
-    def make_test_loader(self):
+    def make_test_loader(self, batch_size=64):
         return DataLoader(
             self.test_dataset,
             batch_size=64,
@@ -340,7 +340,7 @@ class DataModule:
             collate_fn=collate_fn,
         )
 
-    def make_val_loader(self):
+    def make_val_loader(self, batch_size=64):
         return DataLoader(
             self.val_dataset,
             batch_size=64,
