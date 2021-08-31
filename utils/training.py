@@ -224,6 +224,7 @@ def train_config(
     scheduler_factor=0.5,
     scheduler_cooldown=3,
     seed = 1337,
+    always_test = False,
     **kwargs,
 ):
 
@@ -307,7 +308,7 @@ def train_config(
                 best_epoch_dict[metric] = epoch
 
         # Evaluate on test-set to obtain the true unbiased estimate
-        if len(better_in) != 0:
+        if len(better_in) != 0 or always_test:
             test_metric_dict = test(
                 model,
                 test_loader,
