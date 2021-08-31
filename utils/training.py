@@ -67,16 +67,10 @@ def train(
 
         out = model(
             x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
-        )   
+        )
         if torch.any(out.isnan()):
             print("NAN!!!")
             continue
-        if out.isnan().sum() != 0:
-            for name, param in model.named_parameters():
-                if param.isnan().sum() != 0:
-                    print("nan", name, param)
-                if param.isinf().sum() != 0:
-                    print("inf", name, param)
 
         is_not_nan = ~y.isnan()
         y = torch.nan_to_num(y, 0.5)
@@ -171,7 +165,9 @@ def test(
         out = model(
             x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
         )
-        if torch.any(out.isnan()):#TODO: figure out why there are Nans sometimes -> weights are not nan?!?!
+        if torch.any(
+            out.isnan()
+        ):  # TODO: figure out why there are Nans sometimes -> weights are not nan?!?!
             print("NAN!!!")
             continue
         for i in range(n_classes):
@@ -223,8 +219,8 @@ def train_config(
     scheduler_min_lr=1e-6,
     scheduler_factor=0.5,
     scheduler_cooldown=3,
-    seed = 1337,
-    always_test = False,
+    seed=1,
+    always_test=False,
     **kwargs,
 ):
 
@@ -361,7 +357,13 @@ def dict_product(dicts):
 
 
 def grid_search_configs(
-    model_class, data_module, search_grid, randomly_try_n=-1, logdir="runs", **kwargs
+    model_class,
+    data_module,
+    search_grid,
+    randomly_try_n=-1,
+    logdir="runs",
+    try_n_seeds=1,
+    **kwargs,
 ):
 
     configurations = [config for config in dict_product(search_grid)]
@@ -396,34 +398,44 @@ def grid_search_configs(
             .replace(",", "_")
             .replace("{", "_")
         )
-        if config_str in existing_dirs:
-            continue
+        
 
-        print(f"Training config nr. {tried}:\n{config}")
-        dt = time()
+        for seed in range(1, try_n_seeds + 1):
+            print(f"Training config nr. {tried} (seed = {seed}):\n{config}")
+            dt = time()
 
-        logger = SummaryWriter(log_dir=logdir + "/" + config_str, comment=config_str)
+            config_str = str(tried) + "_" + str(seed) + config_str
+            if config_str in existing_dirs:
+                continue
+            logger = SummaryWriter(
+                log_dir=logdir + "/" + config_str, comment=config_str
+            )
 
-        metric_dict, epoch_dict = train_config(
-            model_class=model_class,
-            data_module=data_module,
-            logger=logger,
-            **config,
-            **kwargs,
-        )
+            metric_dict, epoch_dict = train_config(
+                model_class=model_class,
+                data_module=data_module,
+                logger=logger,
+                seed = seed,
+                **config,
+                **kwargs,
+            )
 
-        inverse_dict = dict((v, k) for k, v in epoch_dict.items())
-        for epoch in inverse_dict:
-            metric = inverse_dict[epoch]
+            inverse_dict = dict((v, k) for k, v in epoch_dict.items())
+            for epoch in inverse_dict:
+                metric = inverse_dict[epoch]
 
-            copied_conf = copy.deepcopy(config)
-            copied_conf["epoch"] = epoch
-            curr_metric_dict = metric_dict[metric]
-            new_metric_dict = {}
-            for curr_metric in curr_metric_dict:
-                new_metric_dict["hparam/" + curr_metric] = curr_metric_dict[curr_metric]
+                copied_conf = copy.deepcopy(config)
+                copied_conf["epoch"] = epoch
+                curr_metric_dict = metric_dict[metric]
+                new_metric_dict = {}
+                for curr_metric in curr_metric_dict:
+                    new_metric_dict["hparam/" + curr_metric] = curr_metric_dict[
+                        curr_metric
+                    ]
 
-            if logger:
-                logger.add_hparams(copied_conf, new_metric_dict, run_name=f"ep{epoch}")
+                if logger:
+                    logger.add_hparams(
+                        copied_conf, new_metric_dict, run_name=f"ep{epoch}"
+                    )
 
-        print(f"done (took {time() - dt:.2f}s)\n+++++\n")
+            print(f"done (took {time() - dt:.2f}s)\n+++++\n")

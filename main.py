@@ -36,6 +36,7 @@ def main(
     yaml_file: str = "",
     use_tqdm: bool = False,
     always_test: bool = False,
+    try_n_seeds: int = 1,
 ):
 
     if torch.cuda.is_available():
@@ -95,6 +96,7 @@ def main(
             save=save,
             use_tqdm=use_tqdm,
             always_test=always_test,
+            try_n_seeds = try_n_seeds,
         )
 
 
@@ -147,20 +149,21 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "-t", "--use_tqdm", help="Whether to use tqdm or not", default="True", type=bool
-    )
-    parser.add_argument(
         "-t",
         "--use_tqdm",
         help="Whether to use tqdm or not",
         action="store_true",
-        type=bool,
     )
     parser.add_argument(
         "--always_test",
         help="If each epoch the testset should be evaluated regardingless of the validation score",
         action="store_true",
-        type=bool,
+    )
+    parser.add_argument(
+        "--try_n_seeds",
+        help="The number of seeds to try for each config",
+        default=10,
+        type=int,
     )
 
     args = parser.parse_args()
@@ -176,6 +179,7 @@ if __name__ == "__main__":
     yaml_file = args.yaml
     use_tqdm = args.use_tqdm
     always_test = args.always_test
+    try_n_seeds = args.try_n_seeds
 
     main(
         name,
@@ -189,5 +193,6 @@ if __name__ == "__main__":
         yaml_file,
         use_tqdm,
         always_test,
+        try_n_seeds,
     )
 
