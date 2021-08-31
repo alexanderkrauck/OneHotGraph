@@ -9,7 +9,7 @@ __date__ = "21-08-2021"
 from torch.utils.tensorboard.writer import SummaryWriter
 from utils.one_hot_graph import AttentionOneHotConv, IsomporphismOneHotConv, OneHotGraph
 from torch import nn
-from utils.basic_modules import GIN, MLP, GAT, GINGAT, AbstractBaseline
+from utils.basic_modules import GIN, MLP, GAT, GINGAT, AbstractBaseline, GCN
 from torch_geometric import nn as gnn
 from utils.sinkhorn_graph import SinkhornGAT
 import torch
@@ -185,6 +185,51 @@ class GINGAT_Baseline(AbstractBaseline):
         x = gnn.global_mean_pool(
             x, batch_sample_indices
         )  # [batch_size, hidden_channels]
+
+        # 3. Apply a final classifier
+        x = self.head(x)
+
+        return x
+
+
+class GCN_Baseline(AbstractBaseline):
+    def __init__(
+        self,
+        data_module,
+        n_hidden_channels,
+        n_graph_layers,
+        p_graph_dropout,
+        n_linear_layers,
+        p_linear_dropout,
+        **kwargs
+    ):
+        super(GCN_Baseline, self).__init__(**kwargs)
+
+        self.gcn = GCN(
+            in_channels=data_module.num_node_features,
+            hidden_channels=n_hidden_channels,
+            num_layers=n_graph_layers,
+            dropout=p_graph_dropout,
+            **kwargs
+        )
+
+        self.head = MLP(
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
+        )
+
+    def forward(
+        self, x, edge_index, batch_sample_indices, n_sample_nodes, adjs, xs, **kwargs
+    ):
+        # 1. Obtain node embeddings
+        x = self.gcn(x, edge_index)
+
+        # 2. Readout layer
+        x = gnn.global_mean_pool(x, batch_sample_indices)
 
         # 3. Apply a final classifier
         x = self.head(x)

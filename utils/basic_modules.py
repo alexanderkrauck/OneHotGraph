@@ -216,9 +216,24 @@ class GCN(BasicGNN):
             in_channels, hidden_channels, num_layers, dropout, act, norm, jk
         )
 
-        self.convs.append(GCNConv(in_channels, hidden_channels, **kwargs))
+        keep_keys = [
+            "improved",
+            "cached",
+            "add_self_loops",
+            "normalize",
+            "bias",
+            "aggr",
+            "flow",
+            "node_dim",
+        ]
+        new_kwargs = {}
+        for key in keep_keys:
+            if key in kwargs:
+                new_kwargs[key] = kwargs[key]
+
+        self.convs.append(GCNConv(in_channels, hidden_channels, **new_kwargs))
         for _ in range(1, num_layers):
-            self.convs.append(GCNConv(hidden_channels, hidden_channels, **kwargs))
+            self.convs.append(GCNConv(hidden_channels, hidden_channels, **new_kwargs))
 
 
 class GraphSAGE(BasicGNN):
@@ -298,13 +313,7 @@ class GIN(BasicGNN):
             in_channels, hidden_channels, num_layers, dropout, act, norm, jk
         )
 
-        keep_keys = [
-            "train_eps",
-            "eps",
-            "aggr",
-            "flow",
-            "node_dim"
-        ]
+        keep_keys = ["train_eps", "eps", "aggr", "flow", "node_dim"]
         new_kwargs = {}
         for key in keep_keys:
             if key in kwargs:

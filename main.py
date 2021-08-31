@@ -11,10 +11,9 @@ import torch
 import utils.data as data
 import utils.training as training
 import utils.baselines as baselines
-import utils.sinkhorn_graph as sinkhorn_graph
 
 default_search_grid = {
-    "hidden_channels": [64, 256, 1028],
+    "hidden_channels": [64, 256, 1024],
     "head_depth": [1, 2, 3, 4],
     "base_depth": [3, 5, 10],
     "base_dropout": [0.5, 0.2],
@@ -73,6 +72,8 @@ def main(
             model_class = baselines.AttentionOneHotGraph_Baseline
         elif a == "isomorphismonehotgraph" or a == "isomorphismonehot" or a == "iohg":
             model_class = baselines.IsomorphismOneHotGraph_Baseline
+        elif a == "gcn":
+            model_class = baselines.GCN_Baseline
         else:
             print(f"Model Class {a} is unknown... skipping")
             continue
@@ -109,13 +110,13 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "-c", "--configs", help="Number of configs to try", default=5, type=int
+        "-c", "--configs", help="Number of configs to try", default=-1, type=int
     )
     parser.add_argument(
         "-a",
         "--architecture",
         help="The architecture of choice",
-        default="aohg",
+        default="gcn",
         type=str,
     )
     parser.add_argument(
@@ -125,7 +126,7 @@ if __name__ == "__main__":
         "-e",
         "--epochs",
         help="The number of epochs to run for each config",
-        default=150,
+        default=200,
         type=int,
     )
     parser.add_argument("-s", "--save", help="The save mode", default="best")
