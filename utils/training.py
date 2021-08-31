@@ -404,11 +404,11 @@ def grid_search_configs(
             print(f"Training config nr. {tried} (seed = {seed}):\n{config}")
             dt = time()
 
-            config_str = str(tried) + "_" + str(seed) + config_str
-            if config_str in existing_dirs:
+            seed_config_str = str(tried) + "_" + str(seed) + config_str
+            if seed_config_str in existing_dirs:
                 continue
             logger = SummaryWriter(
-                log_dir=logdir + "/" + config_str, comment=config_str
+                log_dir=logdir + "/" + seed_config_str, comment=seed_config_str
             )
 
             metric_dict, epoch_dict = train_config(
