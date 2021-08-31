@@ -9,6 +9,7 @@ __date__ = "21-08-2021"
 
 from torch_geometric import data
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_gz
+from torch_geometric.datasets import MoleculeNet
 from torch.utils.data import DataLoader
 from torch_geometric.data import Data
 from torch_geometric.data.dataloader import Collater
@@ -69,7 +70,7 @@ e_map = {
 }
 
 
-class MoleculeNet(InMemoryDataset):
+class ExtendedMoleculeNet(MoleculeNet):
 
     # Format: name: [display_name, url_name, csv_name, smiles_idx, y_idx]
     names = {
@@ -88,63 +89,62 @@ class MoleculeNet(InMemoryDataset):
         "tox21_original": [
             "Tox21_original",
             "tox21_original.csv.gz",
-            "tox21_original",
+            "tox21_original.sdf",
+            "infofile.csv",
             -1,
             slice(0, 12),
         ],
     }
 
-    def __init__(self, root, name, transform=None, pre_transform=None, pre_filter=None):
 
-        if Chem is None:
-            raise ImportError("`MoleculeNet` requires `rdkit`.")
+    def download(self):
+        assert self.name != "tox21_original"
 
-        self.name = name.lower()
-        assert self.name in self.names.keys()
-        super(MoleculeNet, self).__init__(root, transform, pre_transform, pre_filter)
-        self.data, self.slices = torch.load(self.processed_paths[0])
-
-    @property
-    def raw_dir(self):
-        return os.path.join(self.root, self.name, "raw")
-
-    @property
-    def processed_dir(self):
-        return os.path.join(self.root, self.name, "processed")
+        super(ExtendedMoleculeNet, self).download()
 
     @property
     def raw_file_names(self):
-        return f"{self.names[self.name][2]}.csv"
-
-    @property
-    def processed_file_names(self):
-        return "data.pt"
-
-    def download(self):
-        url = self.url.format(self.names[self.name][1])
-        path = download_url(url, self.raw_dir)
-        if self.names[self.name][1][-2:] == "gz":
-            extract_gz(path, self.raw_dir)
-            os.unlink(path)
+        if self.name == "tox21_original":
+            return f'{self.names[self.name][2]}', f'{self.names[self.name][3]}'
+        else:
+            return f'{self.names[self.name][2]}.csv'
 
     def process(self):
-        with open(self.raw_paths[0], "r") as f:
-            dataset = f.read().split("\n")[1:-1]
-            dataset = [x for x in dataset if len(x) > 0]  # Filter empty lines.
+        if self.name == "tox21_original":
+            dataset = Chem.SDMolSupplier(self.raw_paths[0])
+            info_file = pd.read_csv(self.raw_paths[1], sep=",", header=0)
+            ids = info_file["sdftitle"].to_numpy()
+            set = info_file["set"].to_numpy()
+            targets = (info_file.to_numpy()[:, -12:]).astype(np.float32)
+
+        else:
+            with open(self.raw_paths[0], "r") as f:
+                dataset = f.read().split("\n")[1:-1]
+                dataset = [x for x in dataset if len(x) > 0]  # Filter empty lines.
+
 
         data_list = []
-        for line in dataset:
-            line = re.sub(r"\".*\"", "", line)  # Replace ".*" strings.
-            line = line.split(",")
+        for idx, line in enumerate(dataset):
+            if self.name != "tox21_original":
+                line = re.sub(r"\".*\"", "", line)  # Replace ".*" strings.
+                line = line.split(",")
 
-            smiles = line[self.names[self.name][3]]
-            ys = line[self.names[self.name][4]]
-            ys = ys if isinstance(ys, list) else [ys]
+                smiles = line[self.names[self.name][3]]
+                ys = line[self.names[self.name][4]]
+                ys = ys if isinstance(ys, list) else [ys]
 
-            ys = [float(y) if len(y) > 0 else float("NaN") for y in ys]
-            y = torch.tensor(ys, dtype=torch.float).view(1, -1)
+                ys = [float(y) if len(y) > 0 else float("NaN") for y in ys]
+                y = torch.tensor(ys, dtype=torch.float).view(1, -1)
 
-            mol = Chem.MolFromSmiles(smiles)
+                mol = Chem.MolFromSmiles(smiles)
+            else:
+                mol = line
+                if mol is None:
+                    print(f"Skipped SDF at index {idx}. (Not readable)")
+                    continue
+                assert mol.GetProp('_Name') == ids[idx]
+                y = torch.tensor(targets[idx], dtype=torch.float).view(1, -1)
+                
             if mol is None:
                 continue
 
@@ -188,8 +188,9 @@ class MoleculeNet(InMemoryDataset):
                 perm = (edge_index[0] * x.size(0) + edge_index[1]).argsort()
                 edge_index, edge_attr = edge_index[:, perm], edge_attr[perm]
 
+
             data = Data(
-                x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, smiles=smiles
+                x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, set = set[idx]
             )
 
             if self.pre_filter is not None and not self.pre_filter(data):
@@ -201,9 +202,6 @@ class MoleculeNet(InMemoryDataset):
             data_list.append(data)
 
         torch.save(self.collate(data_list), self.processed_paths[0])
-
-    def __repr__(self):
-        return "{}({})".format(self.names[self.name][0], len(self))
 
 
 def fixed_split(dataset, test_ratio):
@@ -219,14 +217,6 @@ def fixed_split(dataset, test_ratio):
     train_dataset = dataset[shuffled_indices[test_size * 2 :]]
 
     return train_dataset, val_dataset, test_dataset
-
-
-# class SeperateDataLoader(DataLoader):
-
-#     def __init__(self, **kwargs):
-#         pass
-
-#     def __
 
 
 class DataModule:
@@ -265,7 +255,7 @@ class DataModule:
         self.workers = workers
 
         if data_name == "tox21":
-            dataset = MoleculeNet(root="data", name="Tox21")
+            dataset = ExtendedMoleculeNet(root="data", name="Tox21")
             self.dataset_size = len(dataset)
             self.num_classes = dataset.num_classes
             self.num_node_features = dataset.num_node_features
@@ -291,13 +281,13 @@ class DataModule:
 
         if data_name == "tox21_original":
 
-            dataset = MoleculeNet(root="data", name="tox21_original")
+            dataset = ExtendedMoleculeNet(root="data", name="tox21_original")
 
             self.dataset_size = len(dataset)
             self.num_classes = dataset.num_classes
             self.num_node_features = dataset.num_node_features
             info_file = pd.read_csv(
-                os.path.join(root_dir, "tox21_original", "infofile.csv"),
+                os.path.join(root_dir, "tox21_original", "raw", "infofile.csv"),
                 sep=",",
                 header=0,
             )
@@ -312,15 +302,9 @@ class DataModule:
             elif split_mode == "predefined":
                 set_type = info_file.reset_index()
 
-                training_rows = set_type.index[set_type["set"] == "training"].to_numpy()
-                validation_rows = set_type.index[
-                    set_type["set"] == "validation"
-                ].to_numpy()
-                test_rows = set_type.index[set_type["set"] == "test"].to_numpy()
-
-                self.train_dataset = dataset[training_rows - 1]
-                self.val_dataset = dataset[validation_rows - 1]
-                self.test_dataset = dataset[test_rows - 1]
+                self.train_dataset = dataset[np.array(dataset.data.set) == "training"]
+                self.test_dataset = dataset[np.array(dataset.data.set) == "test"]
+                self.val_dataset = dataset[np.array(dataset.data.set) == "validation"]
 
     def make_train_loader(self, batch_size=64):
         return DataLoader(
