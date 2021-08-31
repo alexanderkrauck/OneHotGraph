@@ -67,8 +67,10 @@ def train(
 
         out = model(
             x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
-        )
-
+        )   
+        if torch.any(out.isnan()):
+            print("NAN!!!")
+            continue
         if out.isnan().sum() != 0:
             for name, param in model.named_parameters():
                 if param.isnan().sum() != 0:
@@ -169,6 +171,9 @@ def test(
         out = model(
             x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
         )
+        if torch.any(out.isnan()):#TODO: figure out why there are Nans sometimes -> weights are not nan?!?!
+            print("NAN!!!")
+            continue
         for i in range(n_classes):
             y = data.y[:, i]
             is_not_nan = ~y.isnan()
