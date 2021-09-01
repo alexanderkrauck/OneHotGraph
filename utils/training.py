@@ -109,6 +109,8 @@ def train(
 
     scores = []
     for i, indices, probs in zip(range(n_classes), indices_list, probs_list):
+        if len(indices) == 0 or len(probs) == 0:
+            continue
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
         scores.append(roc_auc_score(indices, probs))
@@ -117,7 +119,7 @@ def train(
                 f"AUC-ROC/train/{dataset_class_names[i]}", scores[-1], global_step=epoch
             )
 
-    if logger:
+    if logger and len(scores) != 0:
         logger.add_scalar(
             f"AUC-ROC/train/Mean_AUC_ROC", np.mean(scores), global_step=epoch
         )
@@ -398,7 +400,6 @@ def grid_search_configs(
             .replace(",", "_")
             .replace("{", "_")
         )
-        
 
         for seed in range(1, try_n_seeds + 1):
             print(f"Training config nr. {tried} (seed = {seed}):\n{config}")
@@ -415,7 +416,7 @@ def grid_search_configs(
                 model_class=model_class,
                 data_module=data_module,
                 logger=logger,
-                seed = seed,
+                seed=seed,
                 **config,
                 **kwargs,
             )
