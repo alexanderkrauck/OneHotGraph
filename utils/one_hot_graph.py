@@ -387,6 +387,8 @@ class IsomporphismOneHotConv(nn.Module):
         one_hot_mode: str = "conv",
         one_hot_channels: int = 8,
         first_n_one_hot: int = 16,
+        train_eps: bool = False,
+        eps: float = 0,
         **kwargs
     ):
 
@@ -433,6 +435,11 @@ class IsomporphismOneHotConv(nn.Module):
                 use_batch_norm=True,
             )
 
+        if train_eps:
+            self.eps = torch.nn.Parameter(torch.Tensor([eps]))
+        else:
+            self.register_buffer('eps', torch.Tensor([eps]))
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -467,10 +474,10 @@ class IsomporphismOneHotConv(nn.Module):
         res_xs, res_onehot = [], []
         # Onehot Convolution (mine)
         for x, adj, onehot, n_nodes in zip(xs, adjs, onehots, n_sample_nodes):
-
+            x_old = x
             x, onehot = self.propagate(x, onehot, adj, n_nodes)
-            #if x.isnan().sum() != 0 or onehot.isnan().sum() != 0:
-            #    print(self)
+            
+            x = x + x_old * (1 + self.eps)#this should actually be inside the update function... The pytorch geometric guys must be trippin
 
             if self.one_hot_mode == "conv":
                 # Unsqueezing the channel dimension for convs
