@@ -186,6 +186,8 @@ def test(
 
     metric_dict = {}
     for i, indices, probs in zip(range(n_classes), indices_list, probs_list):
+        if len(indices) == 0 or len(probs) == 0:
+            continue
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
         score = roc_auc_score(indices, probs)
