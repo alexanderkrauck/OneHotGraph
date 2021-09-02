@@ -338,7 +338,7 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
     def epoch_log(self, epoch=0):
         if self.logger is not None:
             for name, param in self.named_parameters():
-                if "ohg.convs.0.mlp.linear.0.weight" == name:  # TODO CHECK THIS
+                if "ohg.convs.0.mlp.net.1.weight" == name:  # TODO CHECK THIS
                     val = param[:, -self.one_hot_channels :].detach().abs().mean()
                     self.logger.add_scalar("OH-Part", val, global_step=epoch)
                     del val
