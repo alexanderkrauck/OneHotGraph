@@ -8,6 +8,7 @@ __date__ = "21-08-2021"
 
 
 from torch_geometric import data
+import torch_geometric
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_gz
 from torch_geometric.datasets import MoleculeNet
 from torch.utils.data import DataLoader
@@ -96,7 +97,6 @@ class ExtendedMoleculeNet(MoleculeNet):
         ],
     }
 
-
     def download(self):
         assert self.name != "tox21_original"
 
@@ -105,9 +105,9 @@ class ExtendedMoleculeNet(MoleculeNet):
     @property
     def raw_file_names(self):
         if self.name == "tox21_original":
-            return f'{self.names[self.name][2]}', f'{self.names[self.name][3]}'
+            return f"{self.names[self.name][2]}", f"{self.names[self.name][3]}"
         else:
-            return f'{self.names[self.name][2]}.csv'
+            return f"{self.names[self.name][2]}.csv"
 
     def process(self):
         if self.name == "tox21_original":
@@ -121,7 +121,6 @@ class ExtendedMoleculeNet(MoleculeNet):
             with open(self.raw_paths[0], "r") as f:
                 dataset = f.read().split("\n")[1:-1]
                 dataset = [x for x in dataset if len(x) > 0]  # Filter empty lines.
-
 
         data_list = []
         for idx, line in enumerate(dataset):
@@ -142,9 +141,9 @@ class ExtendedMoleculeNet(MoleculeNet):
                 if mol is None:
                     print(f"Skipped SDF at index {idx}. (Not readable)")
                     continue
-                assert mol.GetProp('_Name') == ids[idx]
+                assert mol.GetProp("_Name") == ids[idx]
                 y = torch.tensor(targets[idx], dtype=torch.float).view(1, -1)
-                
+
             if mol is None:
                 continue
 
@@ -188,9 +187,8 @@ class ExtendedMoleculeNet(MoleculeNet):
                 perm = (edge_index[0] * x.size(0) + edge_index[1]).argsort()
                 edge_index, edge_attr = edge_index[:, perm], edge_attr[perm]
 
-
             data = Data(
-                x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, set = set[idx]
+                x=x, edge_index=edge_index, edge_attr=edge_attr, y=y, set=set[idx]
             )
 
             if self.pre_filter is not None and not self.pre_filter(data):
@@ -306,31 +304,56 @@ class DataModule:
                 self.test_dataset = dataset[np.array(dataset.data.set) == "test"]
                 self.val_dataset = dataset[np.array(dataset.data.set) == "validation"]
 
-    def make_train_loader(self, batch_size=64):
+    def make_train_loader(
+        self, batch_size=64, use_efficient=False, add_self_loops=False, **kwargs
+    ):
         return DataLoader(
             self.train_dataset,
             batch_size=batch_size,
             shuffle=True,
             num_workers=self.workers,
-            collate_fn=collate_fn,
+            collate_fn=(
+                lambda batch: collate_fn_efficientoh(
+                    batch, add_self_loops=add_self_loops
+                )
+            )
+            if use_efficient
+            else collate_fn,
         )
 
-    def make_test_loader(self, batch_size=64):
+    def make_test_loader(
+        self, batch_size=64, use_efficient=False, add_self_loops=False, **kwargs
+    ):
         return DataLoader(
             self.test_dataset,
             batch_size=64,
             shuffle=False,
             num_workers=self.workers,
-            collate_fn=collate_fn,
+            collate_fn=(
+                lambda batch: collate_fn_efficientoh(
+                    batch, add_self_loops=add_self_loops
+                )
+            )
+            if use_efficient
+            else collate_fn,
         )
 
-    def make_val_loader(self, batch_size=64):
+    def make_val_loader(
+        self, batch_size=64, use_efficient=False, add_self_loops=False, **kwargs
+    ):
+
         return DataLoader(
             self.val_dataset,
             batch_size=64,
             shuffle=False,
             num_workers=self.workers,
-            collate_fn=collate_fn,
+            collate_fn=(
+                lambda batch: collate_fn_efficientoh(
+                    batch, add_self_loops=add_self_loops
+                )
+            )
+            if use_efficient
+            else collate_fn,
         )
 
 
@@ -345,3 +368,47 @@ def collate_fn(batch):
 
     return merged_data, lens, adjs, xs
 
+
+def collate_fn_efficientoh(batch, add_self_loops=False):
+
+    lens = torch.tensor([len(b.x) for b in batch])
+    adjs = [b.edge_index for b in batch]
+    if add_self_loops:
+        adjs = [
+            torch_geometric.utils.add_self_loops(
+                torch_geometric.utils.remove_self_loops(b)[0], num_nodes=n_nodes
+            )[0]
+            for b, n_nodes in zip(adjs, lens)
+        ]
+    adjs = torch.stack(
+        [
+            torch.cat((adj, 255 * torch.ones((2, 512 - adj.shape[1]))), dim=1,)
+            for adj in adjs
+        ],
+        dim=0,
+    )
+    xs = torch.stack(
+        [
+            torch.vstack((b.x, torch.zeros((256 - b.x.shape[0], b.x.shape[1]))))
+            for b in batch
+        ],
+        dim=0,
+    )
+    one_hots = torch.stack(
+        [
+            torch.cat(
+                (
+                    torch.cat((torch.eye(l), torch.zeros((256 - l, l))), dim=0),
+                    torch.zeros(256, 256 - l),
+                ),
+                dim=1,
+            )
+            for l in lens
+        ],
+        dim=0,
+    )
+
+
+    y = torch.cat([b.y for b in batch], dim=0)
+
+    return (xs, one_hots, adjs, lens), y

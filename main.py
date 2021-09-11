@@ -37,6 +37,7 @@ def main(
     use_tqdm: bool = False,
     always_test: bool = False,
     try_n_seeds: int = 1,
+    use_efficient: bool = False,
 ):
 
     if torch.cuda.is_available():
@@ -71,9 +72,15 @@ def main(
         elif a == "gingat":
             model_class = baselines.GINGAT_Baseline
         elif a == "attentiononehotgraph" or a == "attentiononehot" or a == "aohg":
-            model_class = baselines.AttentionOneHotGraph_Baseline
+            if use_efficient:
+                model_class = baselines.EfficientAttentionOneHotGraph_Baseline
+            else:
+                model_class = baselines.AttentionOneHotGraph_Baseline
         elif a == "isomorphismonehotgraph" or a == "isomorphismonehot" or a == "iohg":
-            model_class = baselines.IsomorphismOneHotGraph_Baseline
+            if use_efficient:
+                model_class = baselines.EfficientIsomorphismOneHotGraph_Baseline
+            else:
+                model_class = baselines.IsomorphismOneHotGraph_Baseline
         elif a == "gcn":
             model_class = baselines.GCN_Baseline
         else:
@@ -96,7 +103,8 @@ def main(
             save=save,
             use_tqdm=use_tqdm,
             always_test=always_test,
-            try_n_seeds = try_n_seeds,
+            try_n_seeds=try_n_seeds,
+            use_efficient=use_efficient,
         )
 
 
@@ -120,11 +128,11 @@ if __name__ == "__main__":
         "-a",
         "--architecture",
         help="The architecture of choice",
-        default="gcn",
+        default="aohg",
         type=str,
     )
     parser.add_argument(
-        "-d", "--device", help="The device of choice", default="cuda", type=str
+        "-d", "--device", help="The device of choice", default="cpu", type=str
     )
     parser.add_argument(
         "-e",
@@ -149,10 +157,7 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "-t",
-        "--use_tqdm",
-        help="Whether to use tqdm or not",
-        action="store_true",
+        "-t", "--use_tqdm", help="Whether to use tqdm or not", action="store_true",
     )
     parser.add_argument(
         "--always_test",
@@ -162,8 +167,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--try_n_seeds",
         help="The number of seeds to try for each config",
-        default=10,
+        default=1,
         type=int,
+    )
+    parser.add_argument(
+        "--use_efficient",
+        help="If the efficient mode of all instances should be used. This means GPU efficient",
+        action="store_true",
     )
 
     args = parser.parse_args()
@@ -180,6 +190,7 @@ if __name__ == "__main__":
     use_tqdm = args.use_tqdm
     always_test = args.always_test
     try_n_seeds = args.try_n_seeds
+    use_efficient = args.use_efficient
 
     main(
         name,
@@ -194,5 +205,6 @@ if __name__ == "__main__":
         use_tqdm,
         always_test,
         try_n_seeds,
+        use_efficient
     )
 

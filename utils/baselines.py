@@ -8,6 +8,7 @@ __date__ = "21-08-2021"
 
 from torch.utils.tensorboard.writer import SummaryWriter
 from utils.one_hot_graph import AttentionOneHotConv, IsomporphismOneHotConv, OneHotGraph
+import utils.efficient_one_hot_graph as eohg
 from torch import nn
 from utils.basic_modules import GIN, MLP, GAT, GINGAT, AbstractBaseline, GCN
 from torch_geometric import nn as gnn
@@ -329,6 +330,110 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
         x = torch.cat(
             [torch.mean(x, dim=0).unsqueeze(0) for x in xs], dim=0
         )  # [batch_size, hidden_channels]
+
+        # 3. Apply a final classifier
+        x = self.head(x)
+
+        return x
+
+    def epoch_log(self, epoch=0):
+        if self.logger is not None:
+            for name, param in self.named_parameters():
+                if "ohg.convs.0.mlp.net.1.weight" == name:  # TODO CHECK THIS
+                    val = param[:, -self.one_hot_channels :].detach().abs().mean()
+                    self.logger.add_scalar("OH-Part", val, global_step=epoch)
+                    del val
+
+class EfficientAttentionOneHotGraph_Baseline(AbstractBaseline):
+    def __init__(
+        self,
+        data_module,
+        n_hidden_channels,
+        n_graph_layers,
+        p_graph_dropout,
+        n_linear_layers,
+        p_linear_dropout,
+        one_hot_channels=8,
+        **kwargs
+    ):
+        super(EfficientAttentionOneHotGraph_Baseline, self).__init__(**kwargs)
+
+        self.ohg = eohg.OneHotGraph(
+            data_module.num_node_features,
+            n_hidden_channels,
+            n_graph_layers,
+            dropout=p_graph_dropout,
+            conv_type=eohg.AttentionOneHotConv,
+            one_hot_channels=one_hot_channels,
+            **kwargs
+        )
+
+        self.one_hot_channels = one_hot_channels
+        self.head = MLP(
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
+        )
+
+    def forward(
+        self, xs, onehots, adjs, n_sample_nodes, **kwargs
+    ):
+        # 1. Obtain node embeddings
+        xs = self.ohg(xs, onehots, adjs, n_sample_nodes)
+
+        # 2. Readout layer
+        x = torch.sum(xs, dim = -2) / n_sample_nodes.unsqueeze(-1)
+
+        # 3. Apply a final classifier
+        x = self.head(x)
+
+        return x
+
+class EfficientIsomorphismOneHotGraph_Baseline(AbstractBaseline):
+    def __init__(
+        self,
+        data_module,
+        n_hidden_channels,
+        n_graph_layers,
+        p_graph_dropout,
+        n_linear_layers,
+        p_linear_dropout,
+        one_hot_channels=8,
+        **kwargs
+    ):
+        super(EfficientIsomorphismOneHotGraph_Baseline, self).__init__(**kwargs)
+
+        self.ohg = eohg.OneHotGraph(
+            data_module.num_node_features,
+            n_hidden_channels,
+            n_graph_layers,
+            dropout=p_graph_dropout,
+            conv_type=eohg.IsomporphismOneHotConv,
+            one_hot_channels=one_hot_channels,
+            **kwargs
+        )
+
+        self.one_hot_channels = one_hot_channels
+        self.head = MLP(
+            n_layers=n_linear_layers,
+            input_dim=n_hidden_channels,
+            hidden_dim=n_hidden_channels,
+            output_dim=data_module.num_classes,
+            dropout=p_linear_dropout,
+            output_activation=nn.Sigmoid(),
+        )
+
+    def forward(
+        self, xs, onehots, adjs, n_sample_nodes, **kwargs
+    ):
+        # 1. Obtain node embeddings
+        xs = self.ohg(xs, onehots, adjs, n_sample_nodes)
+
+        # 2. Readout layer
+        x = torch.sum(xs, dim = -2) / n_sample_nodes.unsqueeze(-1)
 
         # 3. Apply a final classifier
         x = self.head(x)

@@ -98,9 +98,12 @@ class MLP(nn.Module):
         self.output_activation = output_activation
 
     def forward(self, x):
+        x_shape = x.shape
+        x = x.reshape(-1, x_shape[-1])
         x = self.net(x)
         if self.output_activation is not None:
             return self.output_activation(x)
+        x = x.reshape(*x_shape[:-1], -1)
         return x
 
 

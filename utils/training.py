@@ -33,6 +33,7 @@ def train(
     dataset_class_names: List[str] = None,
     device: str = "cpu",
     use_tqdm: bool = False,
+    use_efficient: bool = False,
     **kwargs,
 ):
 
@@ -53,21 +54,25 @@ def train(
 
     batch_nr = 0
     for minibatch in iterate:
+        if use_efficient:
+            x,y = minibatch
+            out = model(*[tensor.to(device) for tensor in x])
+            y = y.to(device)
+        else:
+            data = minibatch[0]
+            n_sample_nodes = minibatch[1].to(device)
+            adjs = [adj.to(device) for adj in minibatch[2]]
+            xs = [x.float().to(device) for x in minibatch[3]]
+            x, edge_index, batch = (
+                data.x.float().to(device),
+                data.edge_index.to(device),
+                data.batch.to(device),
+            )
+            y = data.y.to(device)
 
-        data = minibatch[0]
-        n_sample_nodes = minibatch[1].to(device)
-        adjs = [adj.to(device) for adj in minibatch[2]]
-        xs = [x.float().to(device) for x in minibatch[3]]
-        x, edge_index, batch = (
-            data.x.float().to(device),
-            data.edge_index.to(device),
-            data.batch.to(device),
-        )
-        y = data.y.to(device)
-
-        out = model(
-            x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
-        )
+            out = model(
+                x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
+            )
         if torch.any(out.isnan()):
             print("NAN!!!")
             continue
@@ -95,10 +100,10 @@ def train(
             )
 
         for i in range(n_classes):
-            y = data.y[:, i]
-            is_not_nan = ~y.isnan()
+            y_class = y[:, i]
+            is_not_nan = ~y_class.isnan()
 
-            indices = y[is_not_nan].long().detach().cpu().numpy()
+            indices = y_class[is_not_nan].long().detach().cpu().numpy()
             rs = out[is_not_nan].detach().cpu().numpy()
             probs = rs[:, i]
 
@@ -135,6 +140,7 @@ def test(
     run_type: str = "test",
     device: str = "cpu",
     use_tqdm: bool = False,
+    use_efficient=False,
     **kwargs,
 ):
 
@@ -152,31 +158,36 @@ def test(
         iterate = loader
 
     for minibatch in iterate:  # Iterate in batches over the training/test dataset.
+        if use_efficient:
+            x,y = minibatch
+            out = model(*[tensor.to(device) for tensor in x])
+            y = y.to(device)
+        else:
+            data = minibatch[0]
+            n_sample_nodes = minibatch[1].to(device)
+            adjs = [adj.to(device) for adj in minibatch[2]]
+            xs = [x.float().to(device) for x in minibatch[3]]
 
-        data = minibatch[0]
-        n_sample_nodes = minibatch[1].to(device)
-        adjs = [adj.to(device) for adj in minibatch[2]]
-        xs = [x.float().to(device) for x in minibatch[3]]
+            x, edge_index, batch = (
+                data.x.float().to(device),
+                data.edge_index.to(device),
+                data.batch.to(device),
+            )
 
-        x, edge_index, batch = (
-            data.x.float().to(device),
-            data.edge_index.to(device),
-            data.batch.to(device),
-        )
-
-        out = model(
-            x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
-        )
+            out = model(
+                x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
+            )
+            y = data.y
         if torch.any(
             out.isnan()
         ):  # TODO: figure out why there are Nans sometimes -> weights are not nan?!?!
             print("NAN!!!")
             continue
         for i in range(n_classes):
-            y = data.y[:, i]
-            is_not_nan = ~y.isnan()
+            y_class = y[:, i]
+            is_not_nan = ~y_class.isnan()
 
-            indices = y[is_not_nan].long().detach().cpu().numpy()
+            indices = y_class[is_not_nan].long().detach().cpu().numpy()
             rs = out[is_not_nan].detach().cpu().numpy()
             probs = rs[:, i]
 
@@ -216,7 +227,6 @@ def train_config(
     logger: SummaryWriter = None,
     lr=1e-2,
     weight_decay=1e-8,
-    batch_size=64,
     epochs=100,
     device="cpu",
     save="best",
@@ -243,9 +253,9 @@ def train_config(
         min_lr=scheduler_min_lr,
     )
 
-    train_loader = data_module.make_train_loader(batch_size=batch_size)
-    val_loader = data_module.make_val_loader(batch_size=batch_size)
-    test_loader = data_module.make_test_loader(batch_size=batch_size)
+    train_loader = data_module.make_train_loader(**kwargs)
+    val_loader = data_module.make_val_loader(**kwargs)
+    test_loader = data_module.make_test_loader(**kwargs)
 
     test(
         model,
