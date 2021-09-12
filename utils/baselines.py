@@ -385,7 +385,7 @@ class EfficientAttentionOneHotGraph_Baseline(AbstractBaseline):
         # 2. Readout layer
         #  a) Set placeholder elements to 0
         xs[
-            torch.arange(0, xs.shape[-2]).unsqueeze(0).repeat(xs.shape[0], 1)
+            torch.arange(0, xs.shape[-2], device = xs.device).unsqueeze(0).repeat(xs.shape[0], 1)
             >= n_nodes.unsqueeze(-1)
         ] = 0
         #  b) readout
@@ -436,7 +436,7 @@ class EfficientIsomorphismOneHotGraph_Baseline(AbstractBaseline):
 
         # 2. Readout layer
         xs[
-            torch.arange(0, xs.shape[-2]).unsqueeze(0).repeat(xs.shape[0], 1)
+            torch.arange(0, xs.shape[-2], device = xs.device).unsqueeze(0).repeat(xs.shape[0], 1)
             >= n_nodes.unsqueeze(-1)
         ] = 0
 
