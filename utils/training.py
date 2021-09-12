@@ -56,7 +56,10 @@ def train(
     for minibatch in iterate:
         if use_efficient:
             x,y = minibatch
-            out = model(*[tensor.to(device) for tensor in x])
+            for item_key in x.keys():
+                x[item_key] = x[item_key].to(device)
+
+            out = model(**x)
             y = y.to(device)
         else:
             data = minibatch[0]
@@ -160,7 +163,10 @@ def test(
     for minibatch in iterate:  # Iterate in batches over the training/test dataset.
         if use_efficient:
             x,y = minibatch
-            out = model(*[tensor.to(device) for tensor in x])
+            for item_key in x.keys():
+                x[item_key] = x[item_key].to(device)
+                
+            out = model(**x)
             y = y.to(device)
         else:
             data = minibatch[0]

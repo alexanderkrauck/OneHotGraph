@@ -378,14 +378,18 @@ class EfficientAttentionOneHotGraph_Baseline(AbstractBaseline):
             output_activation=nn.Sigmoid(),
         )
 
-    def forward(
-        self, xs, onehots, adjs, n_sample_nodes, **kwargs
-    ):
+    def forward(self, n_nodes, **kwargs):
         # 1. Obtain node embeddings
-        xs = self.ohg(xs, onehots, adjs, n_sample_nodes)
+        xs = self.ohg(n_nodes=n_nodes, **kwargs)
 
         # 2. Readout layer
-        x = torch.sum(xs, dim = -2) / n_sample_nodes.unsqueeze(-1)
+        #  a) Set placeholder elements to 0
+        xs[
+            torch.arange(0, xs.shape[-2]).unsqueeze(0).repeat(xs.shape[0], 1)
+            >= n_nodes.unsqueeze(-1)
+        ] = 0
+        #  b) readout
+        x = torch.sum(xs, dim=-2) / n_nodes.unsqueeze(-1)
 
         # 3. Apply a final classifier
         x = self.head(x)
@@ -426,14 +430,18 @@ class EfficientIsomorphismOneHotGraph_Baseline(AbstractBaseline):
             output_activation=nn.Sigmoid(),
         )
 
-    def forward(
-        self, xs, onehots, adjs, n_sample_nodes, **kwargs
-    ):
+    def forward(self, n_nodes, **kwargs):
         # 1. Obtain node embeddings
-        xs = self.ohg(xs, onehots, adjs, n_sample_nodes)
+        xs = self.ohg(n_nodes=n_nodes, **kwargs)
 
         # 2. Readout layer
-        x = torch.sum(xs, dim = -2) / n_sample_nodes.unsqueeze(-1)
+        xs[
+            torch.arange(0, xs.shape[-2]).unsqueeze(0).repeat(xs.shape[0], 1)
+            >= n_nodes.unsqueeze(-1)
+        ] = 0
+
+
+        x = torch.sum(xs, dim=-2) / n_nodes.unsqueeze(-1)
 
         # 3. Apply a final classifier
         x = self.head(x)

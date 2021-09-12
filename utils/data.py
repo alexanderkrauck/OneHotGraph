@@ -372,6 +372,7 @@ def collate_fn(batch):
 def collate_fn_efficientoh(batch, add_self_loops=False):
 
     lens = torch.tensor([len(b.x) for b in batch])
+
     adjs = [b.edge_index for b in batch]
     if add_self_loops:
         adjs = [
@@ -380,16 +381,27 @@ def collate_fn_efficientoh(batch, add_self_loops=False):
             )[0]
             for b, n_nodes in zip(adjs, lens)
         ]
+
+    adj_lens = torch.tensor([adj.shape[1] for adj in adjs])
+
+    maxlen = lens.max()
+    max_adj_len = adj_lens.max()
+
+    dim_size = maxlen + 1 #we need +1 for the adjecency matrix which puts all overflowing elements to be the last node (which is a placeholder)
+    adj_dim_size = max_adj_len 
+
     adjs = torch.stack(
         [
-            torch.cat((adj, 255 * torch.ones((2, 512 - adj.shape[1]))), dim=1,)
+            torch.cat(
+                (adj, (dim_size - 1) * torch.ones((2, adj_dim_size - adj.shape[1]))), dim=1,
+            )
             for adj in adjs
         ],
         dim=0,
     )
     xs = torch.stack(
         [
-            torch.vstack((b.x, torch.zeros((256 - b.x.shape[0], b.x.shape[1]))))
+            torch.vstack((b.x, torch.zeros((dim_size - b.x.shape[0], b.x.shape[1]))))
             for b in batch
         ],
         dim=0,
@@ -398,8 +410,8 @@ def collate_fn_efficientoh(batch, add_self_loops=False):
         [
             torch.cat(
                 (
-                    torch.cat((torch.eye(l), torch.zeros((256 - l, l))), dim=0),
-                    torch.zeros(256, 256 - l),
+                    torch.cat((torch.eye(l), torch.zeros((dim_size - l, l))), dim=0),
+                    torch.zeros(dim_size, dim_size - l),
                 ),
                 dim=1,
             )
@@ -408,7 +420,16 @@ def collate_fn_efficientoh(batch, add_self_loops=False):
         dim=0,
     )
 
-
     y = torch.cat([b.y for b in batch], dim=0)
 
-    return (xs, one_hots, adjs, lens), y
+    return (
+        {
+            "xs": xs,
+            "onehots": one_hots,
+            "adjs": adjs,
+            "n_nodes": lens,
+            "dim_size": dim_size,
+        },
+        y,
+    )
+
