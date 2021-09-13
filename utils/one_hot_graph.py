@@ -232,11 +232,11 @@ class AttentionOneHotConv(nn.Module):
                 adj, _ = torch_geometric.utils.add_self_loops(adj, num_nodes=n_nodes)
 
             if self.use_normal_attention:
-                x, onehots = self.propagate(
+                x, onehot = self.propagate(
                     x, onehot, adj, n_nodes, sending_alphas, receiving_alphas,
                 )
             else:
-                x, onehots = self.propagate(x, onehot, adj, n_nodes)
+                x, onehot = self.propagate(x, onehot, adj, n_nodes)
 
             if self.concat:
                 x = x.view(-1, self.heads * self.out_channels)

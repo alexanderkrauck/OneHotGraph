@@ -7,6 +7,7 @@ __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
 
+from torch._C import dtype
 from torch_geometric import data
 import torch_geometric
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_gz
@@ -326,7 +327,7 @@ class DataModule:
     ):
         return DataLoader(
             self.test_dataset,
-            batch_size=64,
+            batch_size=batch_size,
             shuffle=False,
             num_workers=self.workers,
             collate_fn=(
@@ -344,7 +345,7 @@ class DataModule:
 
         return DataLoader(
             self.val_dataset,
-            batch_size=64,
+            batch_size=batch_size,
             shuffle=False,
             num_workers=self.workers,
             collate_fn=(
@@ -393,18 +394,18 @@ def collate_fn_efficientoh(batch, add_self_loops=False):
     adjs = torch.stack(
         [
             torch.cat(
-                (adj, (dim_size - 1) * torch.ones((2, adj_dim_size - adj.shape[1]))), dim=1,
+                (adj, (dim_size - 1) * torch.ones((2, adj_dim_size - adj.shape[1]), dtype=torch.long)), dim=1,
             )
             for adj in adjs
         ],
-        dim=0,
+        dim=0
     )
     xs = torch.stack(
         [
             torch.vstack((b.x, torch.zeros((dim_size - b.x.shape[0], b.x.shape[1]))))
             for b in batch
         ],
-        dim=0,
+        dim=0
     )
     one_hots = torch.stack(
         [

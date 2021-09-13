@@ -240,7 +240,7 @@ class AttentionOneHotConv(nn.Module):
         **kwargs
     ):
 
-        sending_indices = (adjs[:, 0]).long()  # might be wrong(gather<-)
+        sending_indices = (adjs[:, 0]).long()  # is ok
         receiving_indices = (adjs[:, 1]).long()
 
         sending_onehots = torch.gather(
@@ -256,6 +256,7 @@ class AttentionOneHotConv(nn.Module):
         sending_x = torch.gather(
             xs, dim=-3, index=sending_indices.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, *xs.shape[-2:])
         )
+        #above is ok
         if sending_alphas is not None:
             # sending_alphas = sending_alphas.index_select(0, sending_indices)
             sending_alphas = torch.gather(
@@ -324,7 +325,7 @@ class AttentionOneHotConv(nn.Module):
             if self.one_hot_attention == "dot":
                 onehot_dot_attention = 1 / (
                     torch.sum(sending * receiving, dim=-1) + 1
-                )  # +1 for zeros
+                )
 
             if (
                 self.one_hot_attention == "uoi"
@@ -350,8 +351,8 @@ class AttentionOneHotConv(nn.Module):
                     1, 1, summed_exp.shape[-1]
                 ),
             )
+        #is ok above
 
-        #alpha = torch_geometric.utils.softmax(alpha, receiving_indices)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
         weighted_selected_x = sending_x * alpha.unsqueeze(-1)
@@ -375,7 +376,7 @@ class AttentionOneHotConv(nn.Module):
             receiving_indices,
             dim=-3,
             dim_size=(dim_size),
-            reduce="sum",  # TODO:remove hardcoded 256
+            reduce="sum",
         )
         message_onehots = torch_scatter.scatter(
             sending_onehots, receiving_indices, dim=-2, dim_size=(dim_size), reduce="add"
@@ -584,7 +585,7 @@ class IsomporphismOneHotConv(nn.Module):
             receiving_indices,
             dim=-2,
             dim_size=(dim_size),
-            reduce="sum",  # TODO:remove hardcoded 256
+            reduce="sum",
         )
         message_onehots = torch_scatter.scatter(
             sending_onehots, receiving_indices, dim=-2, dim_size=(dim_size), reduce="add"
