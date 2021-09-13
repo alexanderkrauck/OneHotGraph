@@ -532,17 +532,11 @@ class Symlog(nn.Module):
         is_neg = x < -1
         is_pos = x > 1
 
-        if self.inplace:
-            x[is_neg] = -(torch.log(-x[is_neg]) / self.logbase) - 1
-            x[is_pos] = (torch.log(x[is_pos]) / self.logbase) + 1
-            return x
-        else:
-            x_ = torch.empty_like(x)
-            is_mid = abs(x) < 1
+        if not self.inplace:
+            x = x.clone()
+            
+        x[is_neg] = -(torch.log(-x[is_neg]) / self.logbase) - 1
+        x[is_pos] = (torch.log(x[is_pos]) / self.logbase) + 1
+        return x
 
-            x_[is_neg] = -(torch.log(-x[is_neg]) / self.logbase) - 1
-            x_[is_pos] = (torch.log(x[is_pos]) / self.logbase) + 1
-            x_[is_mid] = x[is_mid]
-
-            return x_
 
