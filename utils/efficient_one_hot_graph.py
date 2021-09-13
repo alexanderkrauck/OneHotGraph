@@ -247,19 +247,19 @@ class AttentionOneHotConv(nn.Module):
         sending_onehots = torch.gather(
             onehots,
             dim=-2,
-            index=sending_indices.unsqueeze(-1).repeat(1, 1, onehots.shape[-1]),
+            index=sending_indices.unsqueeze(-1).expand(-1, -1, onehots.shape[-1]),
         )
         receiving_onehots = torch.gather(
             onehots,
             dim=-2,
-            index=receiving_indices.unsqueeze(-1).repeat(1, 1, onehots.shape[-1]),
+            index=receiving_indices.unsqueeze(-1).expand(-1, -1, onehots.shape[-1]),
         )
         sending_x = torch.gather(
             xs,
             dim=-3,
             index=sending_indices.unsqueeze(-1)
             .unsqueeze(-1)
-            .repeat(1, 1, *xs.shape[-2:]),
+            .expand(-1, -1, *xs.shape[-2:]),
         )
         # above is ok
         if sending_alphas is not None:
@@ -267,8 +267,8 @@ class AttentionOneHotConv(nn.Module):
             sending_alphas = torch.gather(
                 sending_alphas,
                 dim=-2,
-                index=sending_indices.unsqueeze(-1).repeat(
-                    1, 1, sending_alphas.shape[-1]
+                index=sending_indices.unsqueeze(-1).expand(
+                    -1, -1, sending_alphas.shape[-1]
                 ),
             )
         if receiving_alphas is not None:
@@ -276,8 +276,8 @@ class AttentionOneHotConv(nn.Module):
             receiving_alphas = torch.gather(
                 receiving_alphas,
                 dim=-2,
-                index=receiving_indices.unsqueeze(-1).repeat(
-                    1, 1, receiving_alphas.shape[-1]
+                index=receiving_indices.unsqueeze(-1).expand(
+                    -1, -1, receiving_alphas.shape[-1]
                 ),
             )
 
@@ -541,10 +541,10 @@ class IsomporphismOneHotConv(nn.Module):
         selected_onehots = torch.gather(
             onehots,
             dim=-2,
-            index=sending_indices.unsqueeze(-1).repeat(1, 1, onehots.shape[-1]),
+            index=sending_indices.unsqueeze(-1).expand(-1, -1, onehots.shape[-1]),
         )
         selected_x = torch.gather(
-            xs, dim=-2, index=sending_indices.unsqueeze(-1).repeat(1, 1, xs.shape[-1])
+            xs, dim=-2, index=sending_indices.unsqueeze(-1).expand(-1, -1, xs.shape[-1])
         )
 
         weighted_selected_x, weighted_selected_onethots = self.message(
