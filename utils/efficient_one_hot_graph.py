@@ -395,7 +395,6 @@ class AttentionOneHotConv(nn.Module):
 
         return message_x, new_one_hots
 
-
 class IsomporphismOneHotConv(nn.Module):
     def __init__(
         self,
@@ -434,7 +433,7 @@ class IsomporphismOneHotConv(nn.Module):
             output_activation=None,
         )
 
-        self.info_act = Symlog()
+        self.info_act = Symlog(inplace=True)
 
         if self.one_hot_mode == "conv":
             self.onehot_pipe = nn.Sequential(  # This is very arbitrary
@@ -488,15 +487,15 @@ class IsomporphismOneHotConv(nn.Module):
         """
 
         x_old = xs
-        x, onehot = self.propagate(xs, onehots, **kwargs)
+        xs, onehots = self.propagate(xs, onehots, **kwargs)
 
-        x = x + x_old * (
+        xs = xs + x_old * (
             1 + self.eps
         )  # this should actually be inside the update function... The pytorch geometric guys must be trippin
 
         if self.one_hot_mode == "conv":
             # Unsqueezing the channel dimension for convs
-            prepared_onehots = self.info_act(onehot.sort(dim=-1)[0].unsqueeze(-2))
+            prepared_onehots = self.info_act(onehots.sort(dim=-1)[0].unsqueeze(-2))
 
             oh_shape = prepared_onehots.shape
             prepared_onehots = prepared_onehots.reshape(-1, *oh_shape[-2:])
@@ -505,7 +504,7 @@ class IsomporphismOneHotConv(nn.Module):
             )
 
         elif self.one_hot_mode == "ffn":
-            prepared_onehots = self.info_act(onehot.sort(dim=-1, descending=True)[0])
+            prepared_onehots = self.info_act(onehots.sort(dim=-1, descending=True)[0])
             if prepared_onehots.shape[-1] >= self.first_n_one_hot:
                 prepared_onehots = prepared_onehots[:, :, : self.first_n_one_hot]
             else:
@@ -523,11 +522,9 @@ class IsomporphismOneHotConv(nn.Module):
                     ),
                     dim=-1,
                 )
-            # oh_shape = prepared_onehots.shape
-            # prepared_onehots = prepared_onehots.reshape(-1, oh_shape[-1])
             prepared_onehots = self.onehot_pipe(
                 prepared_onehots
-            )  # .reshape(*oh_shape[:-1], -1)
+            )
 
         xs = torch.cat((xs, prepared_onehots), dim=-1)
 
