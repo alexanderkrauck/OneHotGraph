@@ -62,37 +62,28 @@ class MLP(nn.Module):
         if n_layers == 1:
             modules = [nn.Dropout(p=dropout), nn.Linear(input_dim, output_dim)]
         else:
+            modules = [nn.Dropout(p=dropout)] if dropout != 0 else []
+
+            modules.append(nn.Linear(input_dim, hidden_dim))
+
             if use_batch_norm:
-                modules = [
-                    nn.Dropout(p=dropout),
-                    nn.Linear(input_dim, hidden_dim),
-                    nn.BatchNorm1d(hidden_dim),
-                ]
-            else:
-                modules = [nn.Dropout(p=dropout), nn.Linear(input_dim, hidden_dim)]
+                modules.append(nn.BatchNorm1d(hidden_dim))
 
             for i in range(n_layers - 2):
-                if use_batch_norm:
-                    modules.extend(
-                        [
-                            activation,
-                            nn.Dropout(p=dropout),
-                            nn.Linear(hidden_dim, hidden_dim),
-                            nn.BatchNorm1d(hidden_dim),
-                        ]
-                    )
-                else:
-                    modules.extend(
-                        [
-                            activation,
-                            nn.Dropout(p=dropout),
-                            nn.Linear(hidden_dim, hidden_dim),
-                        ]
-                    )
+                modules.append(activation)
 
-            modules.extend(
-                [activation, nn.Dropout(p=dropout), nn.Linear(hidden_dim, output_dim)]
-            )
+                if dropout != 0:
+                    modules.append(nn.Dropout(p=dropout))
+
+                modules.append(nn.Linear(hidden_dim, hidden_dim))
+
+                if use_batch_norm:
+                    modules.append(nn.BatchNorm1d(hidden_dim))
+
+            modules.append(activation)
+            if dropout != 0:
+                modules.append(nn.Dropout(p=dropout))
+            modules.append(nn.Linear(hidden_dim, output_dim))
 
         self.net = nn.Sequential(*modules)
         self.output_activation = output_activation
@@ -534,9 +525,8 @@ class Symlog(nn.Module):
 
         if not self.inplace:
             x = x.clone()
-            
+
         x[is_neg] = -(torch.log(-x[is_neg]) / self.logbase) - 1
         x[is_pos] = (torch.log(x[is_pos]) / self.logbase) + 1
         return x
-
 
