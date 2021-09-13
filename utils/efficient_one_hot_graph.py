@@ -107,8 +107,8 @@ class AttentionOneHotConv(nn.Module):
             self.att_l = nn.Parameter(torch.Tensor(1, heads, out_channels))
             self.att_r = nn.Parameter(torch.Tensor(1, heads, out_channels))
 
-        self.pre_att_act = Symlog(inplace = True)
-        self.pre_info_act = Symlog(inplace = True)
+        self.pre_att_act = Symlog(inplace=True)
+        self.pre_info_act = Symlog(inplace=True)
 
         if self.one_hot_mode == "conv":
             self.onehot_pipe = nn.Sequential(  # This is very arbitrary
@@ -148,12 +148,7 @@ class AttentionOneHotConv(nn.Module):
             gnn.inits.glorot(self.att_r)
         gnn.inits.zeros(self.bias)
 
-    def forward(
-        self,
-        xs: List[Tensor],
-        onehots: List[Tensor],
-        **kwargs
-    ):
+    def forward(self, xs: List[Tensor], onehots: List[Tensor], **kwargs):
         """
 
         Parameters
@@ -183,7 +178,9 @@ class AttentionOneHotConv(nn.Module):
             )
 
         elif self.one_hot_mode == "ffn":
-            prepared_onehots = self.pre_info_act(onehots.sort(dim=-1, descending=True)[0])
+            prepared_onehots = self.pre_info_act(
+                onehots.sort(dim=-1, descending=True)[0]
+            )
             if prepared_onehots.shape[-1] >= self.first_n_one_hot:
                 prepared_onehots = prepared_onehots[:, :, : self.first_n_one_hot]
             else:
@@ -215,10 +212,14 @@ class AttentionOneHotConv(nn.Module):
 
         if self.use_normal_attention:
             xs, onehots = self.propagate(
-                xs = xs, onehots = onehots, sending_alphas = sending_alphas, receiving_alphas = receiving_alphas, **kwargs
+                xs=xs,
+                onehots=onehots,
+                sending_alphas=sending_alphas,
+                receiving_alphas=receiving_alphas,
+                **kwargs
             )
         else:
-            xs, onehots = self.propagate(xs = xs, onehots = onehots, **kwargs)
+            xs, onehots = self.propagate(xs=xs, onehots=onehots, **kwargs)
 
         if self.concat:
             xs = xs.view(*xs.shape[:-2], -1)
@@ -254,9 +255,13 @@ class AttentionOneHotConv(nn.Module):
             index=receiving_indices.unsqueeze(-1).repeat(1, 1, onehots.shape[-1]),
         )
         sending_x = torch.gather(
-            xs, dim=-3, index=sending_indices.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, *xs.shape[-2:])
+            xs,
+            dim=-3,
+            index=sending_indices.unsqueeze(-1)
+            .unsqueeze(-1)
+            .repeat(1, 1, *xs.shape[-2:]),
         )
-        #above is ok
+        # above is ok
         if sending_alphas is not None:
             # sending_alphas = sending_alphas.index_select(0, sending_indices)
             sending_alphas = torch.gather(
@@ -282,7 +287,8 @@ class AttentionOneHotConv(nn.Module):
             receiving_onehots=receiving_onehots,
             receiving_indices=receiving_indices,
             sending_alphas=sending_alphas,
-            receiving_alphas=receiving_alphas, **kwargs
+            receiving_alphas=receiving_alphas,
+            **kwargs
         )
 
         aggregated_selected_x, aggregated_selected_onehots = self.aggregate(
@@ -301,14 +307,16 @@ class AttentionOneHotConv(nn.Module):
         sending_onehots: List[Tensor],
         receiving_onehots: List[Tensor],
         receiving_indices: Tensor,
-        dim_size:int,
+        dim_size: int,
         sending_alphas: Optional[Tensor] = None,
         receiving_alphas: Optional[Tensor] = None,
         **kwargs
     ) -> Tuple[Tensor, Tensor]:
 
         if sending_alphas is None:
-            alpha = torch.ones_like(receiving_indices, dtype=torch.float32).unsqueeze(-1)
+            alpha = torch.ones_like(receiving_indices, dtype=torch.float32).unsqueeze(
+                -1
+            )
         else:
             alpha = (
                 sending_alphas
@@ -323,9 +331,7 @@ class AttentionOneHotConv(nn.Module):
             receiving = self.pre_att_act(receiving_onehots)
 
             if self.one_hot_attention == "dot":
-                onehot_dot_attention = 1 / (
-                    torch.sum(sending * receiving, dim=-1) + 1
-                )
+                onehot_dot_attention = 1 / (torch.sum(sending * receiving, dim=-1) + 1)
 
             if (
                 self.one_hot_attention == "uoi"
@@ -345,13 +351,11 @@ class AttentionOneHotConv(nn.Module):
             alpha, receiving_indices, dim=-2, dim_size=(dim_size), reduce="sum"
         )
         alpha /= torch.gather(
-                summed_exp,
-                dim=-2,
-                index=receiving_indices.unsqueeze(-1).repeat(
-                    1, 1, summed_exp.shape[-1]
-                ),
-            )
-        #is ok above
+            summed_exp,
+            dim=-2,
+            index=receiving_indices.unsqueeze(-1).repeat(1, 1, summed_exp.shape[-1]),
+        )
+        # is ok above
 
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
@@ -372,14 +376,14 @@ class AttentionOneHotConv(nn.Module):
     ) -> Tuple[Tensor, List[Tensor]]:
 
         message_x = torch_scatter.scatter(
-            sending_x,
-            receiving_indices,
-            dim=-3,
-            dim_size=(dim_size),
-            reduce="sum",
+            sending_x, receiving_indices, dim=-3, dim_size=(dim_size), reduce="sum",
         )
         message_onehots = torch_scatter.scatter(
-            sending_onehots, receiving_indices, dim=-2, dim_size=(dim_size), reduce="add"
+            sending_onehots,
+            receiving_indices,
+            dim=-2,
+            dim_size=(dim_size),
+            reduce="add",
         )
 
         return message_x, message_onehots
@@ -394,6 +398,7 @@ class AttentionOneHotConv(nn.Module):
             new_one_hots = message_onehots + onehots
 
         return message_x, new_one_hots
+
 
 class IsomporphismOneHotConv(nn.Module):
     def __init__(
@@ -465,9 +470,7 @@ class IsomporphismOneHotConv(nn.Module):
     def reset_parameters(self):
         pass  # TODO
 
-    def forward(
-        self, xs: Tensor, onehots: Tensor, **kwargs
-    ):
+    def forward(self, xs: Tensor, onehots: Tensor, **kwargs):
         """
 
         Parameters
@@ -522,9 +525,7 @@ class IsomporphismOneHotConv(nn.Module):
                     ),
                     dim=-1,
                 )
-            prepared_onehots = self.onehot_pipe(
-                prepared_onehots
-            )
+            prepared_onehots = self.onehot_pipe(prepared_onehots)
 
         xs = torch.cat((xs, prepared_onehots), dim=-1)
 
@@ -547,9 +548,7 @@ class IsomporphismOneHotConv(nn.Module):
         )
 
         weighted_selected_x, weighted_selected_onethots = self.message(
-            selected_x=selected_x,
-            selected_onehots=selected_onehots,
-            **kwargs
+            selected_x=selected_x, selected_onehots=selected_onehots, **kwargs
         )
 
         aggregated_selected_x, aggregated_selected_onehots = self.aggregate(
@@ -578,14 +577,14 @@ class IsomporphismOneHotConv(nn.Module):
     ) -> Tuple[Tensor, List[Tensor]]:
 
         message_x = torch_scatter.scatter(
-            sending_x,
+            sending_x, receiving_indices, dim=-2, dim_size=(dim_size), reduce="sum",
+        )
+        message_onehots = torch_scatter.scatter(
+            sending_onehots,
             receiving_indices,
             dim=-2,
             dim_size=(dim_size),
-            reduce="sum",
-        )
-        message_onehots = torch_scatter.scatter(
-            sending_onehots, receiving_indices, dim=-2, dim_size=(dim_size), reduce="add"
+            reduce="add",
         )
 
         return message_x, message_onehots
@@ -651,9 +650,7 @@ class OneHotGraph(nn.Module):
         self.act = act
         self.num_layers = num_layers
 
-    def forward(
-        self, xs: Tensor, onehots: Tensor, **kwargs
-    ) -> Tensor:
+    def forward(self, xs: Tensor, onehots: Tensor, **kwargs) -> Tensor:
 
         for i in range(self.num_layers):
             xs, onehots = self.convs[i](xs, onehots, **kwargs)
