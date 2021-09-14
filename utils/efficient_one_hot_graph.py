@@ -345,7 +345,7 @@ class AttentionOneHotConv(nn.Module):
                     torch.sum(torch.minimum(sending, receiving), dim=-1) + self.one_hot_att_constant
                 )  # +1 for zeros
 
-            alpha *= onehot_dot_attention.unsqueeze(-1)
+            alpha = alpha * onehot_dot_attention.unsqueeze(-1)
 
         # = softmax
         alpha = alpha.exp()
