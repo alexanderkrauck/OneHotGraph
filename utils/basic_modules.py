@@ -98,6 +98,29 @@ class MLP(nn.Module):
         return x
 
 
+class Sparse3DMLP(MLP):
+    def forward(self, x, n_elements):
+        x_shape = x.shape
+        dtype = x.dtype
+        device = x.device
+        assert len(x_shape) == 3
+
+        accept_elements = (torch.arange(0, x_shape[1], device=device).unsqueeze(1).repeat(1, x_shape[0]) < n_elements).T
+        accept_elements = accept_elements.reshape(-1)
+
+        x = x.reshape(-1, x_shape[-1])
+        x = x[accept_elements]
+        x = super().forward(x)
+
+        output = torch.zeros(  # maybe empty here to make faster?
+            (x_shape[0] * x_shape[1], x.shape[-1]), dtype=dtype, device=device
+        )
+        output[accept_elements] = x
+        output = output.reshape(*x_shape[:-1], -1)
+
+        return output
+
+
 class BasicGNN(torch.nn.Module):
     r"""An abstract class for implementing basic GNN models.
 

@@ -16,7 +16,7 @@ from torch_geometric import nn as gnn
 import torch.nn.functional as F
 from torch.nn import Conv1d
 
-from utils.basic_modules import MLP, Symlog
+from utils.basic_modules import MLP, Sparse3DMLP, Symlog
 
 import torch_scatter
 import torch_geometric
@@ -38,6 +38,7 @@ class AttentionOneHotConv(nn.Module):
         one_hot_incay: str = "add",
         one_hot_channels: int = 8,
         first_n_one_hot: int = 10,
+        one_hot_att_constant: float = 1.,
         **kwargs
     ):
         """
@@ -93,6 +94,7 @@ class AttentionOneHotConv(nn.Module):
         self.one_hot_incay = one_hot_incay
         self.first_n_one_hot = first_n_one_hot
         self.use_normal_attention = use_normal_attention
+        self.one_hot_att_constant = one_hot_att_constant
 
         if one_hot_mode == "none":
             one_hot_channels = 0
@@ -331,7 +333,7 @@ class AttentionOneHotConv(nn.Module):
             receiving = self.pre_att_act(receiving_onehots)
 
             if self.one_hot_attention == "dot":
-                onehot_dot_attention = 1 / (torch.sum(sending * receiving, dim=-1) + 1)
+                onehot_dot_attention = 1 / (torch.sum(sending * receiving, dim=-1) + self.one_hot_att_constant)
 
             if (
                 self.one_hot_attention == "uoi"
@@ -340,7 +342,7 @@ class AttentionOneHotConv(nn.Module):
                 onehot_dot_attention = torch.sum(
                     torch.maximum(sending, receiving), dim=-1
                 ) / (
-                    torch.sum(torch.minimum(sending, receiving), dim=-1) + 1
+                    torch.sum(torch.minimum(sending, receiving), dim=-1) + self.one_hot_att_constant
                 )  # +1 for zeros
 
             alpha *= onehot_dot_attention.unsqueeze(-1)
@@ -429,7 +431,7 @@ class IsomporphismOneHotConv(nn.Module):
         self.one_hot_cannels = one_hot_channels
         self.first_n_one_hot = first_n_one_hot
 
-        self.mlp = MLP(
+        self.mlp = Sparse3DMLP(
             n_layers=2,
             input_dim=in_channels + one_hot_channels,
             output_dim=out_channels,
@@ -470,7 +472,7 @@ class IsomporphismOneHotConv(nn.Module):
     def reset_parameters(self):
         pass  # TODO
 
-    def forward(self, xs: Tensor, onehots: Tensor, **kwargs):
+    def forward(self, xs: Tensor, onehots: Tensor, n_nodes: Tensor, **kwargs):
         """
 
         Parameters
@@ -483,7 +485,7 @@ class IsomporphismOneHotConv(nn.Module):
             The sending and receiving graph connection. I.e. the adjacent matrix of all the graphs in one batch
         batch_sample_indices: Tensor
             The index of the sample inside the minibatch the node corresponds to
-        n_sample_nodes: Tensor
+        n_nodes: Tensor
             For each graph in the minibatch the number of nodes
         adjs: List[Tensor]
             The same as in edge_index but seperate for each graph in the minibatch
@@ -529,7 +531,7 @@ class IsomporphismOneHotConv(nn.Module):
 
         xs = torch.cat((xs, prepared_onehots), dim=-1)
 
-        xs = self.mlp(xs)
+        xs = self.mlp(xs, n_nodes)
 
         return xs, onehots
 

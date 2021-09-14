@@ -449,6 +449,7 @@ class EfficientIsomorphismOneHotGraph_Baseline(AbstractBaseline):
         return x
 
     def epoch_log(self, epoch=0):
+        return
         if self.logger is not None:
             for name, param in self.named_parameters():
                 if "ohg.convs.0.mlp.net.1.weight" == name:  # TODO CHECK THIS
