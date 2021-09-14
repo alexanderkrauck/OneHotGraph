@@ -352,7 +352,7 @@ class AttentionOneHotConv(nn.Module):
         summed_exp = torch_scatter.scatter(
             alpha, receiving_indices, dim=-2, dim_size=(dim_size), reduce="sum"
         )
-        alpha /= torch.gather(
+        alpha = alpha / torch.gather(
             summed_exp,
             dim=-2,
             index=receiving_indices.unsqueeze(-1).repeat(1, 1, summed_exp.shape[-1]),
