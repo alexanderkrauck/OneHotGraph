@@ -228,7 +228,7 @@ def test(
 
 
 def train_config(
-    model_class,
+    model,
     data_module,
     logger: SummaryWriter = None,
     lr=1e-2,
@@ -240,13 +240,9 @@ def train_config(
     scheduler_min_lr=1e-6,
     scheduler_factor=0.5,
     scheduler_cooldown=3,
-    seed=1,
     always_test=False,
     **kwargs,
 ):
-
-    torch.manual_seed(seed)
-    model = model_class(data_module=data_module, logger=logger, **kwargs).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -384,6 +380,7 @@ def grid_search_configs(
     randomly_try_n=-1,
     logdir="runs",
     try_n_seeds=1,
+    device = "cpu",
     **kwargs,
 ):
 
@@ -431,11 +428,14 @@ def grid_search_configs(
                 log_dir=logdir + "/" + seed_config_str, comment=seed_config_str
             )
 
+
+            torch.manual_seed(seed)
+            model = model_class(data_module=data_module, logger=logger, **kwargs, **config).to(device)
             metric_dict, epoch_dict = train_config(
-                model_class=model_class,
+                model=model,
                 data_module=data_module,
                 logger=logger,
-                seed=seed,
+                device = device,
                 **config,
                 **kwargs,
             )
