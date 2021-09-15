@@ -8,7 +8,7 @@ weight_decay: [1.0e-10]
 batch_size: [256]
 one_hot_mode: [none] #, ffn, conv
 one_hot_attention: [uoi, dot]
-one_hot_incay: [add, binary, binary_add]
+one_hot_incay: [add, indicator, binary_add]
 use_normal_attention: [False, True]
 add_self_loops: [True, False]
 one_hot_att_constant: [1., 0.1, 5]

@@ -109,7 +109,7 @@ class AttentionOneHotConv(nn.Module):
             self.att_l = nn.Parameter(torch.Tensor(1, heads, out_channels))
             self.att_r = nn.Parameter(torch.Tensor(1, heads, out_channels))
 
-        self.pre_att_act = Symlog(inplace=True)
+        self.pre_att_act = Symlog(inplace=False)
         self.pre_info_act = Symlog(inplace=True)
 
         if self.one_hot_mode == "conv":
@@ -345,17 +345,25 @@ class AttentionOneHotConv(nn.Module):
                     torch.sum(torch.minimum(sending, receiving), dim=-1) + self.one_hot_att_constant
                 )  # +1 for zeros
 
-            alpha = alpha * onehot_dot_attention.unsqueeze(-1)
+            alpha = alpha * onehot_dot_attention.unsqueeze(-1)#TODO: This allows interesting dynamics. Maybe softmax alpha before that...
 
         # = softmax
-        alpha = alpha.exp()
+        max_alphas = torch_scatter.scatter(
+            alpha, receiving_indices, dim=-2, dim_size=(dim_size), reduce="max"
+        )
+        max_alphas = torch.gather(max_alphas, dim=-2,
+            index=receiving_indices.unsqueeze(-1).expand(-1, -1, max_alphas.shape[-1]),
+        )
+        alpha = (alpha - max_alphas).exp()
+
         summed_exp = torch_scatter.scatter(
             alpha, receiving_indices, dim=-2, dim_size=(dim_size), reduce="sum"
         )
+
         alpha = alpha / torch.gather(
             summed_exp,
             dim=-2,
-            index=receiving_indices.unsqueeze(-1).repeat(1, 1, summed_exp.shape[-1]),
+            index=receiving_indices.unsqueeze(-1).expand(-1, -1, summed_exp.shape[-1]),
         )
         # is ok above
 
@@ -395,7 +403,7 @@ class AttentionOneHotConv(nn.Module):
     ) -> Tuple[Tensor, List[Tensor]]:
 
         if self.one_hot_incay == "indicator":
-            new_one_hots = (message_onehots + onehots) != 0
+            new_one_hots = ((message_onehots + onehots) != 0).float()
         else:
             new_one_hots = message_onehots + onehots
 
