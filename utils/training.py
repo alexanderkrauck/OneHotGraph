@@ -55,7 +55,7 @@ def train(
     batch_nr = 0
     for minibatch in iterate:
         if use_efficient:
-            x,y = minibatch
+            x, y = minibatch
             for item_key in x.keys():
                 x[item_key] = x[item_key].to(device)
 
@@ -162,10 +162,10 @@ def test(
 
     for minibatch in iterate:  # Iterate in batches over the training/test dataset.
         if use_efficient:
-            x,y = minibatch
+            x, y = minibatch
             for item_key in x.keys():
                 x[item_key] = x[item_key].to(device)
-                
+
             out = model(**x)
             y = y.to(device)
         else:
@@ -380,7 +380,7 @@ def grid_search_configs(
     randomly_try_n=-1,
     logdir="runs",
     try_n_seeds=1,
-    device = "cpu",
+    device="cpu",
     **kwargs,
 ):
 
@@ -406,16 +406,7 @@ def grid_search_configs(
 
         idx = np.random.choice(len(configurations))
         config = configurations.pop(idx)
-        config_str = (
-            str(config)
-            .replace("'", "")
-            .replace(":", "-")
-            .replace(" ", "")
-            .replace("}", "")
-            .replace("_", "")
-            .replace(",", "_")
-            .replace("{", "_")
-        )
+        config_str = "_".join([str(el) for el in config.values()])
 
         for seed in range(1, try_n_seeds + 1):
             print(f"Training config nr. {tried} (seed = {seed}):\n{config}")
@@ -428,14 +419,15 @@ def grid_search_configs(
                 log_dir=logdir + "/" + seed_config_str, comment=seed_config_str
             )
 
-
             torch.manual_seed(seed)
-            model = model_class(data_module=data_module, logger=logger, **kwargs, **config).to(device)
+            model = model_class(
+                data_module=data_module, logger=logger, **kwargs, **config
+            ).to(device)
             metric_dict, epoch_dict = train_config(
                 model=model,
                 data_module=data_module,
                 logger=logger,
-                device = device,
+                device=device,
                 **config,
                 **kwargs,
             )
