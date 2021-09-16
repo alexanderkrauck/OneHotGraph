@@ -329,7 +329,7 @@ class AttentionOneHotConv(nn.Module):
 
         if self.one_hot_attention != "none":
 
-            sending = self.pre_att_act(sending_onehots)
+            sending = self.pre_att_act(sending_onehots)#TODO: Before I accidentially made it inplace (and used the changed one later) but the results were good. Keep this in mind!
             receiving = self.pre_att_act(receiving_onehots)
 
             if self.one_hot_attention == "dot":

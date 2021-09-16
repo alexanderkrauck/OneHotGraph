@@ -16,8 +16,10 @@ import torch.nn.functional as F
 from torch_geometric.nn.conv import GATConv
 from torch_geometric.utils import softmax
 from torch_geometric.typing import OptTensor
+from torch_scatter.scatter import scatter_add
 
 from utils.basic_modules import BasicGNN
+from torch_geometric.nn.conv.gcn_conv import gcn_norm
 
 
 # https://github.com/btaba/sinkhorn_knopp
@@ -163,10 +165,20 @@ class SinkhornGATConv(GATConv):
             alpha = softmax(alpha, edge_index_i, ptr, size_i)
         # alpha_old = alpha
 
-        if self.norm_mode == "sinkhorn":
+        if self.norm_mode == "sinkhorn" or self.norm_mode == "gcn":
             alpha = torch.exp(alpha)
-
-        if self.norm_mode == "sinkhorn" or "both":
+        if self.norm_mode == "gcn":
+            edge_index = torch.stack((edge_index_j, edge_index_i), dim = 0)
+            edge_index, alpha = gcn_norm(edge_index, alpha, size_i, add_self_loops=False)
+        if self.norm_mode == "gcn2":
+            edge_index = torch.stack((edge_index_j, edge_index_i), dim = 0)
+            edge_index, edge_weight = gcn_norm(edge_index, edge_weight=None, num_nodes = size_i, add_self_loops=False)
+            alpha = softmax(alpha, edge_index_i, ptr, size_i)
+            #TODO: Maybe softmax after the reweighting. But then the impact of gcnnorm is exponential -> also bad. Maybe just a linear normalization (i.e. divide thru scatter add)
+            alpha = alpha * edge_weight.unsqueeze(-1)
+            renormalizer = (scatter_add(alpha, edge_index_i, dim=0, dim_size=size_i)[edge_index_i])
+            alpha = alpha / renormalizer
+        if self.norm_mode == "sinkhorn" or self.norm_mode == "both":
             # Sinkhorn Part(This is rather slow) -> TODO: Make it a pytorch-module
             z = torch.zeros((size_i, size_i, alpha.shape[1]), device=alpha.device)
             z[edge_index_j, edge_index_i] = alpha  # maybe switch j and i here?
