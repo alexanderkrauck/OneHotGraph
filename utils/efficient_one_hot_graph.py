@@ -38,7 +38,7 @@ class AttentionOneHotConv(nn.Module):
         one_hot_incay: str = "add",
         one_hot_channels: int = 8,
         first_n_one_hot: int = 10,
-        one_hot_att_constant: float = 1.,
+        one_hot_att_constant: float = 1.0,
         **kwargs
     ):
         """
@@ -329,11 +329,15 @@ class AttentionOneHotConv(nn.Module):
 
         if self.one_hot_attention != "none":
 
-            sending = self.pre_att_act(sending_onehots)#TODO: Before I accidentially made it inplace (and used the changed one later) but the results were good. Keep this in mind!
+            sending = self.pre_att_act(
+                sending_onehots
+            )  # TODO: Before I accidentially made it inplace (and used the changed one later) but the results were good. Keep this in mind!
             receiving = self.pre_att_act(receiving_onehots)
 
             if self.one_hot_attention == "dot":
-                onehot_dot_attention = 1 / (torch.sum(sending * receiving, dim=-1) + self.one_hot_att_constant)
+                onehot_dot_attention = 1 / (
+                    torch.sum(sending * receiving, dim=-1) + self.one_hot_att_constant
+                )
 
             if (
                 self.one_hot_attention == "uoi"
@@ -342,16 +346,21 @@ class AttentionOneHotConv(nn.Module):
                 onehot_dot_attention = torch.sum(
                     torch.maximum(sending, receiving), dim=-1
                 ) / (
-                    torch.sum(torch.minimum(sending, receiving), dim=-1) + self.one_hot_att_constant
+                    torch.sum(torch.minimum(sending, receiving), dim=-1)
+                    + self.one_hot_att_constant
                 )  # +1 for zeros
 
-            alpha = alpha * onehot_dot_attention.unsqueeze(-1)#TODO: This allows interesting dynamics. Maybe softmax alpha before that...
+            alpha = alpha * onehot_dot_attention.unsqueeze(
+                -1
+            )  # TODO: This allows interesting dynamics. Maybe softmax alpha before that...
 
         # = softmax
         max_alphas = torch_scatter.scatter(
             alpha, receiving_indices, dim=-2, dim_size=(dim_size), reduce="max"
         )
-        max_alphas = torch.gather(max_alphas, dim=-2,
+        max_alphas = torch.gather(
+            max_alphas,
+            dim=-2,
             index=receiving_indices.unsqueeze(-1).expand(-1, -1, max_alphas.shape[-1]),
         )
         alpha = (alpha - max_alphas).exp()
@@ -627,7 +636,7 @@ class OneHotGraph(nn.Module):
 
         if conv_type == AttentionOneHotConv:
             assert hidden_channels % heads == 0
-            assert heads == 1 or use_normal_attention == False
+            assert heads == 1 or use_normal_attention
 
             out_channels = hidden_channels // heads
         if conv_type == IsomporphismOneHotConv:
