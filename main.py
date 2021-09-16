@@ -38,6 +38,8 @@ def main(
     always_test: bool = False,
     try_n_seeds: int = 1,
     use_efficient: bool = False,
+    data_split_mode: str = "predefined",
+    data_name: str = "tox21_original",
 ):
 
     if torch.cuda.is_available():
@@ -51,7 +53,7 @@ def main(
     name = name.replace("*time*", datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))
 
     data_module = data.DataModule(
-        "tox21_original", split_mode="predefined", workers=workers
+        data_name=data_name, data_split_mode=data_split_mode, workers=workers, n_cv_folds=try_n_seeds
     )
 
     n_architectures = len(architecture.split(","))
@@ -151,7 +153,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-y",
-        "--yaml",
+        "--yaml_file",
         help="The yaml file with the search grid",
         default="grids/grid_manual.yml",
         type=str,
@@ -175,36 +177,20 @@ if __name__ == "__main__":
         help="If the efficient mode of all instances should be used. This means GPU efficient",
         action="store_true",
     )
+    parser.add_argument(
+        "--data_split_mode",
+        help='How the datamodule should split the data. Options are "fixed", "predefined", "cv"',
+        default="predefined",
+        type=str,
+    )
+    parser.add_argument(
+        "--data_name",
+        help="The name of the dataset to use",
+        default="tox21_original",
+        type=str,
+    )
 
     args = parser.parse_args()
 
-    logdir = args.logdir
-    name = args.name
-    configs = args.configs
-    architecture = args.architecture.lower()
-    device = args.device
-    epochs = args.epochs
-    save = args.save
-    workers = args.workers
-    yaml_file = args.yaml
-    use_tqdm = args.use_tqdm
-    always_test = args.always_test
-    try_n_seeds = args.try_n_seeds
-    use_efficient = args.use_efficient
-
-    main(
-        name,
-        logdir,
-        configs,
-        architecture,
-        device,
-        epochs,
-        save,
-        workers,
-        yaml_file,
-        use_tqdm,
-        always_test,
-        try_n_seeds,
-        use_efficient
-    )
+    main(**dict(args._get_kwargs()))
 

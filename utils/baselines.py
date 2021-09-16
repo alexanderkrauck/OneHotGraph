@@ -344,6 +344,7 @@ class IsomorphismOneHotGraph_Baseline(AbstractBaseline):
                     self.logger.add_scalar("OH-Part", val, global_step=epoch)
                     del val
 
+
 class EfficientAttentionOneHotGraph_Baseline(AbstractBaseline):
     def __init__(
         self,
@@ -385,7 +386,9 @@ class EfficientAttentionOneHotGraph_Baseline(AbstractBaseline):
         # 2. Readout layer
         #  a) Set placeholder elements to 0
         xs[
-            torch.arange(0, xs.shape[-2], device = xs.device).unsqueeze(0).repeat(xs.shape[0], 1)
+            torch.arange(0, xs.shape[-2], device=xs.device)
+            .unsqueeze(0)
+            .repeat(xs.shape[0], 1)
             >= n_nodes.unsqueeze(-1)
         ] = 0
         #  b) readout
@@ -395,6 +398,7 @@ class EfficientAttentionOneHotGraph_Baseline(AbstractBaseline):
         x = self.head(x)
 
         return x
+
 
 class EfficientIsomorphismOneHotGraph_Baseline(AbstractBaseline):
     def __init__(
@@ -436,10 +440,11 @@ class EfficientIsomorphismOneHotGraph_Baseline(AbstractBaseline):
 
         # 2. Readout layer
         xs[
-            torch.arange(0, xs.shape[-2], device = xs.device).unsqueeze(0).repeat(xs.shape[0], 1)
+            torch.arange(0, xs.shape[-2], device=xs.device)
+            .unsqueeze(0)
+            .repeat(xs.shape[0], 1)
             >= n_nodes.unsqueeze(-1)
         ] = 0
-
 
         x = torch.sum(xs, dim=-2) / n_nodes.unsqueeze(-1)
 

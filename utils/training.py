@@ -34,6 +34,7 @@ def train(
     device: str = "cpu",
     use_tqdm: bool = False,
     use_efficient: bool = False,
+    clf_type = "multi_label",
     **kwargs,
 ):
 
@@ -76,6 +77,9 @@ def train(
             out = model(
                 x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
             )
+
+        if len(y.shape) == 1:
+            y = y.unsqueeze(-1)
         if torch.any(out.isnan()):
             print("NAN!!!")
             continue
@@ -83,12 +87,10 @@ def train(
         is_not_nan = ~y.isnan()
         y = torch.nan_to_num(y, 0.5)
 
-        try:
-            loss = (
-                F.binary_cross_entropy(out, y, reduction="none") * is_not_nan
-            ).mean()  # Same as is the DeepTox paper (ignore nan preds)
-        except RuntimeError:
-            print(y, out)
+        loss = (
+            F.binary_cross_entropy(out, y.float(), reduction="none") * is_not_nan
+        ).mean()  # Same as is the DeepTox paper (ignore nan preds)
+
 
         optimizer.zero_grad()
         loss.backward()
@@ -96,7 +98,7 @@ def train(
 
         if logger:
             logger.add_scalar(
-                f"BCR_MultiTask",
+                f"BCR_{clf_type}",
                 loss.detach().cpu().numpy(),
                 global_step=loader.batch_size
                 * (n_minibatches * (epoch - 1) + batch_nr + 1),
@@ -121,11 +123,21 @@ def train(
             continue
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
-        scores.append(roc_auc_score(indices, probs))
-        if logger:
-            logger.add_scalar(
-                f"AUC-ROC/train/{dataset_class_names[i]}", scores[-1], global_step=epoch
-            )
+        if clf_type == "multi_label":
+            score = roc_auc_score(indices, probs)
+            if logger:
+                logger.add_scalar(
+                    f"AUC-ROC/train/{dataset_class_names[i]}", score, global_step=epoch
+                )
+            scores.append(score)
+
+        elif clf_type == "binary":
+            score = np.mean(np.round(probs) == indices)
+            if logger:
+                logger.add_scalar(
+                    f"ACC/train/", score, global_step=epoch
+                )
+
 
     if logger and len(scores) != 0:
         logger.add_scalar(
@@ -144,6 +156,7 @@ def test(
     device: str = "cpu",
     use_tqdm: bool = False,
     use_efficient=False,
+    clf_type = "multi_label",
     **kwargs,
 ):
 
@@ -184,6 +197,8 @@ def test(
                 x, edge_index, batch, n_sample_nodes=n_sample_nodes, adjs=adjs, xs=xs
             )
             y = data.y
+        if len(y.shape) == 1:
+            y = y.unsqueeze(-1)
         if torch.any(
             out.isnan()
         ):  # TODO: figure out why there are Nans sometimes -> weights are not nan?!?!
@@ -208,21 +223,29 @@ def test(
             continue
         indices = np.concatenate(indices)
         probs = np.concatenate(probs)
-        score = roc_auc_score(indices, probs)
-        metric_dict["AUC_ROC_" + dataset_class_names[i]] = score
+        if clf_type == "multi_label":
+            score = roc_auc_score(indices, probs)
+            metric_dict["AUC_ROC_" + dataset_class_names[i]] = score
+            if logger:
+                logger.add_scalar(
+                    f"AUC-ROC/{run_type}/{dataset_class_names[i]}", score, global_step=epoch
+                )
+        elif clf_type == "binary":
+            score = np.mean(np.round(probs) == indices)
+            metric_dict["ACC"] = score
+            if logger:
+                logger.add_scalar(
+                    f"ACC/{run_type}/", score, global_step=epoch
+                )
+    if clf_type == "multi_label":
+        metric_dict["Mean_AUC_ROC"] = np.mean(list(metric_dict.values()))
+
         if logger:
             logger.add_scalar(
-                f"AUC-ROC/{run_type}/{dataset_class_names[i]}", score, global_step=epoch
+                f"AUC-ROC/{run_type}/Mean_AUC_ROC",
+                metric_dict["Mean_AUC_ROC"],
+                global_step=epoch,
             )
-
-    metric_dict["Mean_AUC_ROC"] = np.mean(list(metric_dict.values()))
-
-    if logger:
-        logger.add_scalar(
-            f"AUC-ROC/{run_type}/Mean_AUC_ROC",
-            metric_dict["Mean_AUC_ROC"],
-            global_step=epoch,
-        )
 
     return metric_dict
 
@@ -268,6 +291,7 @@ def train_config(
         data_module.class_names,
         run_type="train",
         device=device,
+        clf_type = data_module.clf_type,
         **kwargs,
     )
     best_metric_dict = test(
@@ -279,6 +303,7 @@ def train_config(
         data_module.class_names,
         run_type="validation",
         device=device,
+        clf_type = data_module.clf_type,
         **kwargs,
     )
     model.epoch_log(epoch=0)
@@ -297,6 +322,7 @@ def train_config(
             logger,
             data_module.class_names,
             device=device,
+            clf_type = data_module.clf_type,
             **kwargs,
         )
         metric_dict = test(
@@ -308,6 +334,7 @@ def train_config(
             data_module.class_names,
             run_type="validation",
             device=device,
+            clf_type = data_module.clf_type,
             **kwargs,
         )
         model.epoch_log(epoch=epoch)
@@ -331,9 +358,11 @@ def train_config(
                 data_module.class_names,
                 run_type="test",
                 device=device,
+                clf_type = data_module.clf_type,
                 **kwargs,
             )
-            test_metric_dict["VAL_Mean_AUC_ROC"] = metric_dict["Mean_AUC_ROC"]
+            if data_module.clf_type == "multi_label":
+                test_metric_dict["VAL_Mean_AUC_ROC"] = metric_dict["Mean_AUC_ROC"]
             for metric in better_in:
 
                 best_test_metric_dict[metric] = test_metric_dict
@@ -357,7 +386,7 @@ def train_config(
                             ),
                         )  # this not
 
-        lr_scheduler.step(metric_dict["Mean_AUC_ROC"])
+        lr_scheduler.step(metric_dict["Mean_AUC_ROC"] if data_module.clf_type == "multi_label" else metric_dict["ACC"])
         if (
             lr_scheduler.num_bad_epochs == scheduler_patience
             and lr_scheduler._last_lr[0] <= scheduler_min_lr + lr_scheduler.eps
@@ -421,7 +450,7 @@ def grid_search_configs(
 
             torch.manual_seed(seed)
             model = model_class(
-                data_module=data_module, logger=logger, **kwargs, **config
+                data_module=data_module, logger=logger, n_th_cv_fold = seed, **kwargs, **config
             ).to(device)
             metric_dict, epoch_dict = train_config(
                 model=model,

@@ -7,11 +7,10 @@ __email__ = "alexander.krauck@gmail.com"
 __date__ = "21-08-2021"
 
 
-from torch._C import dtype
-from torch_geometric import data
+
 import torch_geometric
-from torch_geometric.data import Data, InMemoryDataset, download_url, extract_gz
-from torch_geometric.datasets import MoleculeNet
+from torch_geometric.data import Data
+from torch_geometric.datasets import MoleculeNet, TUDataset
 from torch.utils.data import DataLoader
 from torch_geometric.data import Data
 from torch_geometric.data.dataloader import Collater
@@ -30,6 +29,7 @@ from rdkit import Chem
 _names = [
     "tox21",  # The tox21 dataset which is provided in the torch_geometric.datasets.MoleculeNet
     "tox21_original",  # The tox21 dataset how it was originally and avaiable at
+    "proteins"
 ]
 
 x_map = {
@@ -225,9 +225,10 @@ class DataModule:
         self,
         data_name: str,
         root_dir: str = "data",
-        split_mode: str = "fixed",
+        data_split_mode: str = "fixed",
         test_ratio: float = 0.2,
         workers: int = 2,
+        n_cv_folds: int = 10,
     ):
         """
         
@@ -238,11 +239,11 @@ class DataModule:
             Supported names are tox21, tox21_original.
         root_dir: str
             The root dir where the data is located or should be downloaded.
-        split_mode: str
-            The mode how the data should be split. Can be "fixed", "predefined" or TODO: cluster_cross_validation.
+        data_split_mode: str
+            The mode how the data should be split. Can be "fixed", "predefined", "cv" or TODO: cluster_cross_validation.
         test_ratio: float
             The percentage of the data that should be assigned to the test set and to the validation set each.
-            This is only used for "fixed" split_mode.
+            This is only used for "fixed" data_split_mode.
         batch_size: int
             The batch size of the training data loader.
         workers: int
@@ -252,12 +253,15 @@ class DataModule:
         assert data_name in _names
 
         self.workers = workers
+        self.data_split_mode = data_split_mode
 
         if data_name == "tox21":
+            assert data_split_mode != "predefined"
+
             dataset = ExtendedMoleculeNet(root="data", name="Tox21")
-            self.dataset_size = len(dataset)
             self.num_classes = dataset.num_classes
             self.num_node_features = dataset.num_node_features
+            self.clf_type = "multi_label"
             self.class_names = [
                 "NR-AR",
                 "NR-AR-LBD",
@@ -273,43 +277,76 @@ class DataModule:
                 "SR-p53",
             ]
 
-            if split_mode == "fixed":
-                self.train_dataset, self.val_dataset, self.test_dataset = fixed_split(
-                    dataset, test_ratio
-                )
-
         if data_name == "tox21_original":
+
+            self.clf_type = "multi_label"
 
             dataset = ExtendedMoleculeNet(root="data", name="tox21_original")
 
-            self.dataset_size = len(dataset)
-            self.num_classes = dataset.num_classes
-            self.num_node_features = dataset.num_node_features
             info_file = pd.read_csv(
                 os.path.join(root_dir, "tox21_original", "raw", "infofile.csv"),
                 sep=",",
                 header=0,
             )
-
             self.class_names = info_file.columns[-12:]
 
-            if split_mode == "fixed":
-                self.train_dataset, self.val_dataset, self.test_dataset = fixed_split(
-                    dataset, test_ratio
-                )
-
-            elif split_mode == "predefined":
-                set_type = info_file.reset_index()
-
+            if data_split_mode == "predefined":
                 self.train_dataset = dataset[np.array(dataset.data.set) == "training"]
                 self.test_dataset = dataset[np.array(dataset.data.set) == "test"]
                 self.val_dataset = dataset[np.array(dataset.data.set) == "validation"]
 
+        if data_name == "proteins":
+            assert data_split_mode != "predefined"
+            self.clf_type = "binary"
+            self.class_names = ["Enzyme", "Non_Enzyme"]
+
+
+            dataset = TUDataset(os.path.join(root_dir, "tudata"), name="PROTEINS")
+
+
+
+        self.dataset_size = len(dataset)
+        self.num_classes = dataset.num_classes if self.clf_type != "binary" else 1
+        self.num_node_features = dataset.num_node_features
+
+        if data_split_mode == "fixed":
+            self.train_dataset, self.val_dataset, self.test_dataset = fixed_split(
+                dataset, test_ratio
+            )
+
+        if data_split_mode == "cv":
+                self.dataset = dataset
+                self.n_cv_folds = n_cv_folds
+                self.train_indices = []
+                self.test_indices = []
+                self.val_indices = []
+                shuffled_indices = np.arange(len(dataset))
+                np.random.shuffle(shuffled_indices)
+
+                for i in range(n_cv_folds):
+                    split = len(dataset) // n_cv_folds
+                    start_idx = (i * len(dataset)) // n_cv_folds
+                    self.test_indices.append(shuffled_indices[start_idx: start_idx + split])
+                    other = np.concatenate((shuffled_indices[:start_idx], shuffled_indices[start_idx + split:]))
+
+                    self.val_indices.append(other[:len(dataset)//n_cv_folds])
+                    self.train_indices.append(other[len(dataset)//n_cv_folds:])
+
     def make_train_loader(
-        self, batch_size=64, use_efficient=False, add_self_loops=False, **kwargs
+        self,
+        batch_size=64,
+        use_efficient=False,
+        add_self_loops=False,
+        n_th_cv_fold=0,
+        **kwargs,
     ):
+        if self.data_split_mode == "cv":
+            dataset = self.dataset[self.train_indices[n_th_cv_fold].tolist()]
+        else:
+            dataset = self.train_dataset
+
         return DataLoader(
-            self.train_dataset,
+            dataset,
             batch_size=batch_size,
             shuffle=True,
             num_workers=self.workers,
@@ -323,10 +360,20 @@ class DataModule:
         )
 
     def make_test_loader(
-        self, batch_size=64, use_efficient=False, add_self_loops=False, **kwargs
+        self,
+        batch_size=64,
+        use_efficient=False,
+        add_self_loops=False,
+        n_th_cv_fold=0,
+        **kwargs,
     ):
+        if self.data_split_mode == "cv":
+            dataset = self.dataset[self.test_indices[n_th_cv_fold].tolist()]
+        else:
+            dataset = self.test_dataset
+
         return DataLoader(
-            self.test_dataset,
+            dataset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=self.workers,
@@ -340,11 +387,20 @@ class DataModule:
         )
 
     def make_val_loader(
-        self, batch_size=64, use_efficient=False, add_self_loops=False, **kwargs
+        self,
+        batch_size=64,
+        use_efficient=False,
+        add_self_loops=False,
+        n_th_cv_fold=0,
+        **kwargs,
     ):
+        if self.data_split_mode == "cv":
+            dataset = self.dataset[self.val_indices[n_th_cv_fold].tolist()]
+        else:
+            dataset = self.val_dataset
 
         return DataLoader(
-            self.val_dataset,
+            dataset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=self.workers,
@@ -388,24 +444,31 @@ def collate_fn_efficientoh(batch, add_self_loops=False):
     maxlen = lens.max()
     max_adj_len = adj_lens.max()
 
-    dim_size = maxlen + 1 #we need +1 for the adjecency matrix which puts all overflowing elements to be the last node (which is a placeholder)
-    adj_dim_size = max_adj_len 
+    dim_size = (
+        maxlen + 1
+    )  # we need +1 for the adjecency matrix which puts all overflowing elements to be the last node (which is a placeholder)
+    adj_dim_size = max_adj_len
 
     adjs = torch.stack(
         [
             torch.cat(
-                (adj, (dim_size - 1) * torch.ones((2, adj_dim_size - adj.shape[1]), dtype=torch.long)), dim=1,
+                (
+                    adj,
+                    (dim_size - 1)
+                    * torch.ones((2, adj_dim_size - adj.shape[1]), dtype=torch.long),
+                ),
+                dim=1,
             )
             for adj in adjs
         ],
-        dim=0
+        dim=0,
     )
     xs = torch.stack(
         [
             torch.vstack((b.x, torch.zeros((dim_size - b.x.shape[0], b.x.shape[1]))))
             for b in batch
         ],
-        dim=0
+        dim=0,
     )
     one_hots = torch.stack(
         [
