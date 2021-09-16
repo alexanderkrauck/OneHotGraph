@@ -81,7 +81,7 @@ class AttentionOneHotConv(nn.Module):
 
         super(AttentionOneHotConv, self).__init__()
 
-        assert use_normal_attention == False or heads == 1
+        assert use_normal_attention or heads == 1
 
         self.in_channels = in_channels
         self.out_channels = out_channels
