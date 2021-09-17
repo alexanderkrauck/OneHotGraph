@@ -29,7 +29,8 @@ from rdkit import Chem
 _names = [
     "tox21",  # The tox21 dataset which is provided in the torch_geometric.datasets.MoleculeNet
     "tox21_original",  # The tox21 dataset how it was originally and avaiable at
-    "proteins"
+    "proteins",
+    "nci1"
 ]
 
 x_map = {
@@ -303,6 +304,13 @@ class DataModule:
 
             dataset = TUDataset(os.path.join(root_dir, "tudata"), name="PROTEINS")
 
+        if data_name == "nci1":
+            assert data_split_mode != "predefined"
+            self.clf_type = "binary"
+            self.class_names = ["cancer", "no_cancer"]
+
+
+            dataset = TUDataset(os.path.join(root_dir, "tudata"), name="NCI1")
 
 
         self.dataset_size = len(dataset)
@@ -357,6 +365,7 @@ class DataModule:
             )
             if use_efficient
             else collate_fn,
+            pin_memory=True
         )
 
     def make_test_loader(
@@ -384,6 +393,7 @@ class DataModule:
             )
             if use_efficient
             else collate_fn,
+            pin_memory=True
         )
 
     def make_val_loader(
@@ -411,6 +421,7 @@ class DataModule:
             )
             if use_efficient
             else collate_fn,
+            pin_memory=True
         )
 
 

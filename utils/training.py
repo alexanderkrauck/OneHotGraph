@@ -276,6 +276,7 @@ def train_config(
         patience=scheduler_patience,
         cooldown=scheduler_cooldown,
         min_lr=scheduler_min_lr,
+        verbose=True
     )
 
     train_loader = data_module.make_train_loader(**kwargs)

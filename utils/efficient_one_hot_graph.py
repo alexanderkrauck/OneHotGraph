@@ -39,6 +39,7 @@ class AttentionOneHotConv(nn.Module):
         one_hot_channels: int = 8,
         first_n_one_hot: int = 10,
         one_hot_att_constant: float = 1.0,
+        train_one_hot_att_constant: bool = False,
         **kwargs
     ):
         """
@@ -94,7 +95,10 @@ class AttentionOneHotConv(nn.Module):
         self.one_hot_incay = one_hot_incay
         self.first_n_one_hot = first_n_one_hot
         self.use_normal_attention = use_normal_attention
-        self.one_hot_att_constant = one_hot_att_constant
+        if train_one_hot_att_constant:
+            self.one_hot_att_constant = nn.Parameter(torch.tensor(one_hot_att_constant, dtype=torch.float32), requires_grad=True)
+        else:
+            self.one_hot_att_constant = one_hot_att_constant
 
         if one_hot_mode == "none":
             one_hot_channels = 0
