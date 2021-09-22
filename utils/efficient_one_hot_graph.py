@@ -40,6 +40,7 @@ class AttentionOneHotConv(nn.Module):
         first_n_one_hot: int = 10,
         one_hot_att_constant: float = 1.0,
         train_one_hot_att_constant: bool = False,
+        use_special:bool = False,
         **kwargs
     ):
         """
@@ -95,6 +96,7 @@ class AttentionOneHotConv(nn.Module):
         self.one_hot_incay = one_hot_incay
         self.first_n_one_hot = first_n_one_hot
         self.use_normal_attention = use_normal_attention
+        self.use_special = use_special
         if train_one_hot_att_constant:
             self.one_hot_att_constant = nn.Parameter(torch.tensor(one_hot_att_constant, dtype=torch.float32), requires_grad=True)
         else:
@@ -105,9 +107,24 @@ class AttentionOneHotConv(nn.Module):
 
         self.one_hot_cannels = one_hot_channels
 
-        self.lin = nn.Linear(
-            in_channels + one_hot_channels, heads * out_channels, bias=False
-        )
+
+        self.att_lin = nn.Linear(
+                in_channels + one_hot_channels, heads * out_channels, bias=False
+            )
+        if self.use_special:
+            self.lin = nn.Linear(
+                in_channels + one_hot_channels, heads * out_channels, bias=False
+            )
+
+            ch = out_channels * heads if concat else out_channels
+            self.mlp = Sparse3DMLP(
+                n_layers=2,
+                input_dim=ch,
+                output_dim=ch,
+                hidden_dim=ch,
+                use_batch_norm=True,
+                output_activation=None,
+            )
 
         if self.use_normal_attention:
             self.att_l = nn.Parameter(torch.Tensor(1, heads, out_channels))
@@ -154,7 +171,7 @@ class AttentionOneHotConv(nn.Module):
             gnn.inits.glorot(self.att_r)
         gnn.inits.zeros(self.bias)
 
-    def forward(self, xs: List[Tensor], onehots: List[Tensor], **kwargs):
+    def forward(self, xs: List[Tensor], onehots: List[Tensor], n_nodes, **kwargs):
         """
 
         Parameters
@@ -210,11 +227,17 @@ class AttentionOneHotConv(nn.Module):
         if self.one_hot_mode != "none":
             xs = torch.cat((xs, prepared_onehots), dim=-1)
 
-        xs = self.lin(xs).view(*xs.shape[:-1], self.heads, self.out_channels)
+        att_xs = self.att_lin(xs).view(*xs.shape[:-1], self.heads, self.out_channels)
+        if self.use_special:
+            xs = self.lin(xs).view(*xs.shape[:-1], self.heads, self.out_channels)
+        else:
+            xs = att_xs
+
 
         if self.use_normal_attention:
-            sending_alphas = (xs * self.att_l).sum(dim=-1)
-            receiving_alphas = (xs * self.att_r).sum(dim=-1)
+            sending_alphas = (att_xs * self.att_l).sum(dim=-1)
+            receiving_alphas = (att_xs * self.att_r).sum(dim=-1)
+        del att_xs
 
         if self.use_normal_attention:
             xs, onehots = self.propagate(
@@ -234,6 +257,9 @@ class AttentionOneHotConv(nn.Module):
 
         if self.bias is not None:
             xs += self.bias
+
+        if self.use_special:
+            xs = self.mlp(xs, n_nodes)
 
         return xs, onehots
 

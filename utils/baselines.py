@@ -399,6 +399,14 @@ class EfficientAttentionOneHotGraph_Baseline(AbstractBaseline):
 
         return x
 
+    def epoch_log(self, epoch=0):
+        if self.logger is not None:
+            for name, param in self.named_parameters():
+                if "one_hot_att_constant" in name:  # TODO CHECK THIS
+                    val = param.detach().cpu().numpy()
+                    self.logger.add_scalar(name, val, global_step=epoch)
+                    del val
+
 
 class EfficientIsomorphismOneHotGraph_Baseline(AbstractBaseline):
     def __init__(
