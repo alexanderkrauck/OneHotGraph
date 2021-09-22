@@ -165,11 +165,14 @@ class AttentionOneHotConv(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        gnn.inits.glorot(self.lin.weight)
+        if self.use_special:
+            gnn.inits.glorot(self.lin.weight)
         if self.use_normal_attention:
             gnn.inits.glorot(self.att_l)
             gnn.inits.glorot(self.att_r)
         gnn.inits.zeros(self.bias)
+        gnn.inits.glorot(self.att_lin.weight)
+
 
     def forward(self, xs: List[Tensor], onehots: List[Tensor], n_nodes, **kwargs):
         """
