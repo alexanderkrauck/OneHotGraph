@@ -401,7 +401,13 @@ class AttentionOneHotConv(nn.Module):
         summed_exp = torch_scatter.scatter(
             alpha, receiving_indices, dim=-2, dim_size=(dim_size), reduce="sum"
         )
-
+        
+        if self.use_special:
+            deg = torch_scatter.scatter(
+                torch.ones_like(alpha), receiving_indices, dim=-2, dim_size=(dim_size), reduce="sum"
+            )
+            summed_exp /= deg
+        
         alpha = alpha / torch.gather(
             summed_exp,
             dim=-2,
