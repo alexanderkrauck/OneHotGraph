@@ -585,7 +585,8 @@ class IsomporphismOneHotConv(nn.Module):
                 )
             prepared_onehots = self.onehot_pipe(prepared_onehots)
 
-        xs = torch.cat((xs, prepared_onehots), dim=-1)
+        if self.one_hot_mode != "none":
+            xs = torch.cat((xs, prepared_onehots), dim=-1)
 
         xs = self.mlp(xs, n_nodes)
 
