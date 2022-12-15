@@ -72,7 +72,7 @@ e_map = {
     "is_conjugated": [False, True],
 }
 
-
+#Parts from the class below are taken from the MoleculeNet class of Pytorch Geometric
 class ExtendedMoleculeNet(MoleculeNet):
 
     # Format: name: [display_name, url_name, csv_name, smiles_idx, y_idx]

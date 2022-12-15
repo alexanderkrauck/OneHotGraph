@@ -120,6 +120,7 @@ class Sparse3DMLP(MLP):
 
         return output
 
+#from here to the end marker the code is copied from the PytorchGeometric source file with the same name as this file because there were import errors 
 
 class BasicGNN(torch.nn.Module):
     r"""An abstract class for implementing basic GNN models.
@@ -416,8 +417,8 @@ class GAT(BasicGNN):
         for _ in range(1, num_layers):
             self.convs.append(GATConv(hidden_channels, out_channels, **new_kwargs))
 
+# End marker for the copied code
 
-# From me
 
 
 class GINGATConv(GATConv):

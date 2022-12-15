@@ -22,7 +22,7 @@ from utils.basic_modules import BasicGNN
 from torch_geometric.nn.conv.gcn_conv import gcn_norm
 
 
-# https://github.com/btaba/sinkhorn_knopp
+# https://github.com/btaba/sinkhorn_knopp was the inspiration for the function below
 def sinkhorn(
     P: Tensor, threshhold=1e-3, max_iter=100, return_extra=False, do_n_iters=-1
 ):
