@@ -9,9 +9,9 @@ Mainly the novelty of this work lies in the Attention One Hot Graph (AOHG) and t
 If you use anything from this repository than please cite
 
 ```bibtex
-@misc{alexanderkrauck,
-    author = Alexander Krauck,
-    title = One Hot Graph,
+@misc{krauck_onehotgraph_2023,
+    author = {Krauck, Alexander},
+    title = {One Hot Graph},
     year = {2023},
     publisher = {GitHub},
     journal = {GitHub repository},
