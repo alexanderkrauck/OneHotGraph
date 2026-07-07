@@ -1,20 +1,87 @@
 # OneHotGraph
 
-Implementation of a graph neural network where each node has a unique one hot encoding as addition to the usual vector of each node. This should help overcome the limitations of WL Isomorphism test. This was a project of mine during a research oriented internship at the institute of machine leanring of the Johannes Kepler University in Linz.
+Research internship artifact exploring one-hot node identity features in graph neural networks.
 
-This repository includes a utils folder that includes most of the code that was written. Moreover, there are 5 jupyter notebooks which were used by me to experiment, however those are not cleaned for other users but may still contain some valueables.
+Author: Alexander Krauck  
+Context: Institute of Machine Learning, Johannes Kepler University Linz  
+Focus: graph neural networks, graph isomorphism, graph representation learning
 
-Mainly the novelty of this work lies in the Attention One Hot Graph (AOHG) and the Isomorphism One Hot Graph (IOHG) that both have some unique properties. Moreover the mini-batching techinque that I used is slightly more memory consuming but faster as the one used per default with pytorch geoemtric. For a more detailed description see the corrsponding report OneHotGraph_Lab_Report.pdf
+## What This Is
 
-If you use anything from this repository than please cite
+This repository contains experimental code from a research-oriented internship at the Institute of Machine Learning at Johannes Kepler University Linz.
+
+The project explored whether adding node-specific one-hot identity features can change the behavior of graph neural networks on graph-structure tasks. The work was exploratory and should be read as a research artifact, not as a maintained package.
+
+## Research Question
+
+Standard message-passing GNNs have known limitations related to the Weisfeiler-Lehman graph isomorphism test. This project explored whether adding unique node identity features could help distinguish certain graph structures and improve expressiveness in selected settings.
+
+The experiments focused on:
+
+- one-hot node identity features
+- graph isomorphism-related behavior
+- attention-based graph models
+- batching and memory tradeoffs
+- exploratory comparison against standard graph neural network setups
+
+## Repository Structure
+
+```text
+OneHotGraph/
+├── utils/                    # core experiment code
+├── grids/                    # experiment/grid configurations
+├── main.py                   # experiment entry point
+├── environment.yml           # conda environment
+├── OneHotGraph_Lab_Report.pdf
+├── citation.bib
+└── *.ipynb                   # exploratory notebooks
+```
+
+## Notebooks
+
+The notebooks are preserved as part of the research process. They are not cleaned as a tutorial or library API.
+
+```text
+00_TryStuff.ipynb
+01_Data_Exploration.ipynb
+02_Pytorch_Geometric_Tryout.ipynb
+03_SparseTrying.ipynb
+04_OGH_Experiments.ipynb
+```
+
+## Setup
+
+```bash
+conda env create -f environment.yml
+conda activate onehotgraph
+```
+
+Run experiments:
+
+```bash
+python main.py
+```
+
+## Report
+
+For more context, see:
+
+```text
+OneHotGraph_Lab_Report.pdf
+```
+
+## Citation
 
 ```bibtex
-@misc{krauck_onehotgraph_2023,
-    author = {Krauck, Alexander},
-    title = {One Hot Graph},
-    year = {2023},
-    publisher = {GitHub},
-    journal = {GitHub repository},
-    howpublished = {\url{https://github.com/alexanderkrauck/OneHotGraph}},
+@misc{krauck2023onehotgraph,
+  author = {Krauck, Alexander},
+  title = {OneHotGraph},
+  year = {2023},
+  publisher = {GitHub},
+  howpublished = {\url{https://github.com/alexanderkrauck/OneHotGraph}}
 }
 ```
+
+## Status
+
+Exploratory research artifact. Kept public for transparency, but not maintained as a reusable framework.
